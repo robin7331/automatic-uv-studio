@@ -30,8 +30,6 @@ class StartPrint(Workflow):
             if ready:
                 break
 
-        print("Printer ready")
-
         # Here you would now hit the start button on the actual printer itself
         pyautogui.sleep(10)
 
@@ -45,8 +43,6 @@ class StartPrint(Workflow):
             if online:
                 break
 
-        print("Printer is printing!")
-
         pyautogui.sleep(4)
 
         # Loop until the print is complete
@@ -57,8 +53,6 @@ class StartPrint(Workflow):
             )
             if complete:
                 break
-
-        print("Print complete!")
 
         center = pyautogui.locateCenterOnScreen("images/finish.png", confidence=0.9)
         if not center:
