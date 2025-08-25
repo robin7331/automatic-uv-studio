@@ -4,8 +4,9 @@ import pywinctl as pwc
 
 
 class StartPrint(Workflow):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, publish_control_message=None, **kwargs):
         super().__init__(*args, name="Start Print", **kwargs)
+        self.publish_control_message = publish_control_message
 
     def run(self, canvas_index=0):
         super().run()
@@ -30,8 +31,10 @@ class StartPrint(Workflow):
             if ready:
                 break
 
-        # Here you would now hit the start button on the actual printer itself
-        pyautogui.sleep(10)
+        pyautogui.sleep(2)
+        # Send MQTT message to press the physical start button
+        self.publish_control_message("press_start_button")
+        pyautogui.sleep(2)
 
         # Open the machine tab
         self.click_machine()

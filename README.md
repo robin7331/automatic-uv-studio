@@ -32,6 +32,13 @@ Receive real-time status updates:
 }
 ```
 
+### Physical Start Button Topic: `uv_studio/control`
+A device should subscribe to thos topic and when receiving the message   
+```json
+{"action": "press_start_button"}
+```
+it should press the physical start button of the eufy Make
+
 ## Installation
 
 1. Install dependencies:

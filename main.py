@@ -51,6 +51,7 @@ class Config:
         self.topic_prefix = topic_prefix
         self.topic_command = f"{topic_prefix}/command"
         self.topic_status = f"{topic_prefix}/status"
+        self.topic_control = f"{topic_prefix}/control"
 
 
 # Global config instance
@@ -147,7 +148,7 @@ def stop_print():
         return False
 
 
-def start_print(canvas_index=0):
+def start_print(canvas_index=0, publish_control_message=None):
     global stop_print_event
 
     window_rect = prepare_window()
@@ -237,7 +238,9 @@ def start_print(canvas_index=0):
     print(start_msg)
     logger.info(start_msg)
     publish_status_message(start_msg, "info")
-    start_print = StartPrint(window_rect=window_rect)
+    start_print = StartPrint(
+        window_rect=window_rect, publish_control_message=publish_control_message
+    )
     if not start_print.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to print"
         print(error_msg)
@@ -289,7 +292,9 @@ def start_print_async(canvas_index, print_type):
             )
             return False
 
-        success = start_print(canvas_index=canvas_index)
+        success = start_print(
+            canvas_index=canvas_index, publish_control_message=publish_control_message
+        )
 
         # Check for stop signal after print attempt
         if stop_print_event.is_set():
@@ -336,6 +341,31 @@ def publish_status_message(message, level="info"):
         )
     else:
         logger.warning("No event loop available for publishing status message")
+
+
+def publish_control_message(action):
+    """Publish a control message to MQTT (sync wrapper)"""
+    global event_loop
+
+    if event_loop and event_loop.is_running():
+        # Schedule the coroutine to run in the event loop from another thread
+        asyncio.run_coroutine_threadsafe(
+            publish_control_message_async(action), event_loop
+        )
+    else:
+        logger.warning("No event loop available for publishing control message")
+
+
+async def publish_control_message_async(action):
+    """Publish a control message to MQTT asynchronously"""
+    control_message = {"action": action, "timestamp": time.time()}
+    try:
+        await mqtt_client.publish(
+            config.topic_control, json.dumps(control_message).encode(), qos=QOS_1
+        )
+        logger.info(f"Published control message: {action}")
+    except Exception as e:
+        logger.error(f"Failed to publish control message: {str(e)}")
 
 
 async def mqtt_message_handler():
