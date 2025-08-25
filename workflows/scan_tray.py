@@ -16,7 +16,6 @@ class ScanTray(Workflow):
         if not center:
             return False
 
-        print(self.transform_point_to_non_retina(center))
         pyautogui.click(self.transform_point_to_non_retina(center))
 
         # Give it a little while to start
@@ -26,10 +25,14 @@ class ScanTray(Workflow):
         self.click_machine()
 
         # Loop until the machine is idle again and therefore finished with scanning
+        checks = 0
         while True:
             pyautogui.sleep(1)
             online = pyautogui.locateOnScreen("images/idle.png", confidence=0.9)
             if online:
                 break
+            checks += 1
+            if checks > 300:
+                return False
 
         return True

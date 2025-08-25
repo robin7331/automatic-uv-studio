@@ -16,7 +16,6 @@ class StartPrint(Workflow):
         if not center:
             return False
 
-        print(self.transform_point_to_non_retina(center))
         pyautogui.click(self.transform_point_to_non_retina(center))
 
         # Give it a little while to start

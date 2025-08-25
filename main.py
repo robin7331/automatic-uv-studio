@@ -12,7 +12,6 @@ pyscreeze.USE_IMAGE_NOT_FOUND_EXCEPTION = False
 
 
 def main():
-    screenWidth, screenHeight = pyautogui.size()
 
     # activate the window and raise an error if not found
     window = pwc.getWindowsWithTitle("eufy", pwc.Re.CONTAINS)
