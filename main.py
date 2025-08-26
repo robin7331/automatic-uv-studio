@@ -122,11 +122,6 @@ def prepare_window():
 def stop_print():
     window_rect = prepare_window()
 
-    prepare_msg = f"Stopping"
-    print(prepare_msg)
-    logger.info(prepare_msg)
-    publish_status_message(prepare_msg, "info")
-
     if not window_rect:
         error_msg = f"Could not prepare window"
         print(error_msg)
@@ -134,19 +129,12 @@ def stop_print():
         publish_status_message(error_msg, "error")
         return False
 
-    # reset the screen
     stop = Stop(window_rect=window_rect)
     if not stop.run():
         error_msg = f"Could not stop the task"
         print(error_msg)
         logger.error(error_msg)
         publish_status_message(error_msg, "error")
-        return False
-    else:
-        error_msg = f"Current task stopped"
-        print(error_msg)
-        logger.error(error_msg)
-        publish_status_message(error_msg, "info")
         return False
 
 
@@ -165,7 +153,6 @@ def start_print(canvas_index=0, publish_control_message=None):
 
     # Check for stop signal
     if stop_print_event.is_set():
-        logger.info(f"{prefix}Print stopped during preparation")
         return False
 
     if not window_rect:
@@ -186,7 +173,6 @@ def start_print(canvas_index=0, publish_control_message=None):
 
     # Check for stop signal
     if stop_print_event.is_set():
-        logger.info(f"{prefix}Print stopped during UI reset")
         return False
 
     # check if printer online
@@ -200,7 +186,6 @@ def start_print(canvas_index=0, publish_control_message=None):
 
     # Check for stop signal
     if stop_print_event.is_set():
-        logger.info(f"{prefix}Print stopped during online check")
         return False
 
     # Make sure the printer is idle
@@ -214,7 +199,6 @@ def start_print(canvas_index=0, publish_control_message=None):
 
     # Check for stop signal
     if stop_print_event.is_set():
-        logger.info(f"{prefix}Print stopped during idle check")
         return False
 
     # Check for low ink
@@ -236,7 +220,6 @@ def start_print(canvas_index=0, publish_control_message=None):
 
     # Check for stop signal
     if stop_print_event.is_set():
-        logger.info(f"{prefix}Print stopped during tray scan")
         return False
 
     # Print
@@ -267,6 +250,11 @@ def start_print(canvas_index=0, publish_control_message=None):
     return True
 
 
+def log_stop():
+    logger.info(f"[{print_type}] print was stopped")
+    publish_status_message(f"[{print_type}] print was stopped", "info")
+
+
 def start_print_async(canvas_index, print_type):
     """Run the print workflow asynchronously"""
     global current_print_thread, stop_print_event
@@ -291,23 +279,16 @@ def start_print_async(canvas_index, print_type):
         print(start_msg)
         publish_status_message(start_msg, "info")
 
-        # Check for stop signal before starting
         if stop_print_event.is_set():
-            logger.info(f"{print_type} print was stopped before starting")
-            publish_status_message(
-                f"{print_type} print was stopped before starting", "info"
-            )
+            log_stop()
             return False
 
         success = start_print(
             canvas_index=canvas_index, publish_control_message=publish_control_message
         )
 
-        # Check for stop signal after print attempt
         if stop_print_event.is_set():
-            logger.info(f"{print_type} print was stopped")
-            publish_status_message(f"{print_type} print was stopped", "info")
-            stop_print()  # Call the stop_print function to handle cleanup
+            log_stop()
             return False
 
         if success:
@@ -334,7 +315,6 @@ def start_print_async(canvas_index, print_type):
         finish_msg = f"{print_type} print thread finished"
         logger.info(finish_msg)
         print(finish_msg)
-        publish_status_message(finish_msg, "info")
 
 
 def publish_status_message(message, level="info"):
@@ -475,10 +455,8 @@ def handle_stop_command():
         stop_print()
 
         logger.info("Print job stop signal sent")
-        publish_status_message("Print job stop signal sent", "info")
     else:
         logger.warning("No print job is currently running")
-        publish_status_message("No print job is currently running", "warning")
 
 
 async def setup_mqtt():

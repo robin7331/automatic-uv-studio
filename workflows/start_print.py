@@ -23,6 +23,7 @@ class StartPrint(Workflow):
         pyautogui.sleep(2)
 
         # Wait for the printer to be ready
+        checks = 0
         while True:
             pyautogui.sleep(1)
             ready = pyautogui.locateOnScreen(
@@ -30,6 +31,9 @@ class StartPrint(Workflow):
             )
             if ready:
                 break
+            checks += 1
+            if checks > 10:
+                return False
 
         pyautogui.sleep(2)
         # Send MQTT message to press the physical start button
@@ -40,15 +44,20 @@ class StartPrint(Workflow):
         self.click_machine()
 
         # wait until
+        checks = 0
         while True:
             pyautogui.sleep(1)
             online = pyautogui.locateOnScreen("images/printing.png", confidence=0.9)
             if online:
                 break
+            checks += 1
+            if checks > 10:
+                return False
 
         pyautogui.sleep(4)
 
         # Loop until the print is complete
+        checks = 0
         while True:
             pyautogui.sleep(1)
             complete = pyautogui.locateOnScreen(
@@ -56,6 +65,9 @@ class StartPrint(Workflow):
             )
             if complete:
                 break
+            checks += 1
+            if checks > 600:
+                return False
 
         center = pyautogui.locateCenterOnScreen("images/finish.png", confidence=0.9)
         if not center:
