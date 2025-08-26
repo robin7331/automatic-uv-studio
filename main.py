@@ -7,6 +7,7 @@ from workflows.scan_tray import ScanTray
 from workflows.workflow import Workflow
 from workflows.start_print import StartPrint
 from workflows.stop import Stop
+from workflows.check_if_low_ink import CheckIfLowInk
 import pyscreeze
 import threading
 import logging
@@ -35,6 +36,7 @@ mqtt_client = None
 mqtt_broker_process = None
 broker_config = None
 event_loop = None
+low_ink = False
 
 
 class Config:
@@ -150,6 +152,7 @@ def stop_print():
 
 def start_print(canvas_index=0, publish_control_message=None):
     global stop_print_event
+    global low_ink
 
     window_rect = prepare_window()
 
@@ -213,6 +216,10 @@ def start_print(canvas_index=0, publish_control_message=None):
     if stop_print_event.is_set():
         logger.info(f"{prefix}Print stopped during idle check")
         return False
+
+    # Check for low ink
+    check_if_low_ink = CheckIfLowInk(window_rect=window_rect)
+    low_ink = not check_if_low_ink.run()
 
     # Scan the tray
     scan_msg = f"{prefix}Scanning the tray"
@@ -279,7 +286,7 @@ def start_print_async(canvas_index, print_type):
         stop_print_event.clear()
 
         current_print_thread = threading.current_thread()
-        start_msg = f"Starting {print_type} print (canvas_index={canvas_index})"
+        start_msg = f"Starting {print_type} print"
         logger.info(start_msg)
         print(start_msg)
         publish_status_message(start_msg, "info")
@@ -419,7 +426,8 @@ async def publish_status_message_async(message, level="info"):
         "timestamp": time.time(),
         "level": level,
         "message": message,
-        "print_job_running": current_print_thread and current_print_thread.is_alive(),
+        "low_ink": low_ink,
+        "print_job_running2": current_print_thread and current_print_thread.is_alive(),
     }
     try:
         await mqtt_client.publish(
@@ -445,10 +453,6 @@ def handle_start_print_command(print_type, canvas_index):
         target=start_print_async, args=(canvas_index, print_type), daemon=True
     )
     thread.start()
-
-    success_msg = f"{print_type} print job started"
-    logger.info(success_msg)
-    publish_status_message(success_msg, "info")
 
 
 def handle_status_command():
