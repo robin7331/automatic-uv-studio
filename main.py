@@ -9,6 +9,7 @@ from workflows.start_print import StartPrint
 from workflows.stop import Stop
 from workflows.check_if_low_ink import CheckIfLowInk
 from workflows.check_if_should_moisturize import CheckIfShouldMoisturize
+from workflows.select_zero_point_alignment import SelectZeroPointAlignment
 import pyscreeze
 import threading
 import logging
@@ -232,7 +233,13 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
             publish_status_message(error_msg, "error")
             return False
     else:
-        pass
+        select_zeropoint = SelectZeroPointAlignment(window_rect=window_rect)
+        if not select_zeropoint.run(canvas_index=canvas_index):
+            error_msg = f"{prefix}Failed to select zero point alignment"
+            print(error_msg)
+            logger.error(error_msg)
+            publish_status_message(error_msg, "error")
+            return False
 
     # Check for stop signal
     if stop_print_event.is_set():
@@ -275,7 +282,9 @@ def start_print_async(canvas_index, print_type):
     """Run the print workflow asynchronously"""
     global current_print_thread, stop_print_event
 
-    should_scan_tray = True
+    # Set to False will use the zero reference printing without prescannung
+    # True will scan and print without using the reference feature.
+    should_scan_tray = False
 
     # Check if we can acquire the lock (non-blocking)
     if not print_lock.acquire(blocking=False):

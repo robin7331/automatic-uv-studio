@@ -32,7 +32,7 @@ class StartPrint(Workflow):
             if ready:
                 break
             checks += 1
-            if checks > 10:
+            if checks > 300:
                 return False
 
         pyautogui.sleep(2)
@@ -66,7 +66,7 @@ class StartPrint(Workflow):
             if complete:
                 break
             checks += 1
-            if checks > 600:
+            if checks > 900:
                 return False
 
         center = pyautogui.locateCenterOnScreen("images/finish.png", confidence=0.9)
