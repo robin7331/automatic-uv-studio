@@ -3,7 +3,9 @@ import os
 
 
 class Workflow:
-    def __init__(self, name=None, window_rect=None, is_retina=True, image_path="images"):
+    def __init__(
+        self, name=None, window_rect=None, is_retina=True, image_path="images"
+    ):
         self.name = name
         self.is_retina = is_retina
         self.window_rect = window_rect

@@ -120,7 +120,9 @@ def stop_print():
         return False
 
     # reset the screen
-    stop = Stop(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
+    stop = Stop(
+        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
+    )
     if not stop.run():
         error_msg = f"Could not stop"
         print(error_msg)
@@ -161,7 +163,9 @@ def start_print(canvas_index=0):
         return False
 
     # reset the screen
-    reset_ui = ResetUIWorkflow(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
+    reset_ui = ResetUIWorkflow(
+        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
+    )
     if not reset_ui.run():
         error_msg = f"{prefix}Could not reset the UI"
         print(error_msg)
@@ -175,7 +179,9 @@ def start_print(canvas_index=0):
         return False
 
     # check if printer online
-    check_if_online = CheckIfOnline(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
+    check_if_online = CheckIfOnline(
+        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
+    )
     if not check_if_online.run():
         error_msg = f"{prefix}Printer not online"
         print(error_msg)
@@ -189,7 +195,9 @@ def start_print(canvas_index=0):
         return False
 
     # Make sure the printer is idle
-    check_if_idle = CheckIfIdle(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
+    check_if_idle = CheckIfIdle(
+        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
+    )
     if not check_if_idle.run():
         error_msg = f"{prefix}Printer not idle"
         print(error_msg)
@@ -207,7 +215,9 @@ def start_print(canvas_index=0):
     print(scan_msg)
     logger.info(scan_msg)
     publish_status_message(scan_msg, "info")
-    scan_tray = ScanTray(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
+    scan_tray = ScanTray(
+        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
+    )
     if not scan_tray.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to scan tray"
         print(error_msg)
@@ -226,11 +236,11 @@ def start_print(canvas_index=0):
     print(start_msg)
     logger.info(start_msg)
     publish_status_message(start_msg, "info")
-        start_print_workflow = StartPrint(
-        window_rect=window_rect, 
+    start_print_workflow = StartPrint(
+        window_rect=window_rect,
         publish_control_message=publish_control_message,
         is_retina=config.retina,
-        image_path=config.image_path
+        image_path=config.image_path,
     )
     if not start_print_workflow.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to print"

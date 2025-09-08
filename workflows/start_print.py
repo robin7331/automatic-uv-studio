@@ -13,7 +13,9 @@ class StartPrint(Workflow):
 
         self.click_canvas_index(index=canvas_index)
 
-        center = pyautogui.locateCenterOnScreen(self.get_image_path("print.png"), confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(
+            self.get_image_path("print.png"), confidence=0.9
+        )
         if not center:
             return False
 
@@ -47,7 +49,9 @@ class StartPrint(Workflow):
         checks = 0
         while True:
             pyautogui.sleep(1)
-            online = pyautogui.locateOnScreen(self.get_image_path("printing.png"), confidence=0.9)
+            online = pyautogui.locateOnScreen(
+                self.get_image_path("printing.png"), confidence=0.9
+            )
             if online:
                 break
             checks += 1
@@ -69,7 +73,9 @@ class StartPrint(Workflow):
             if checks > 900:
                 return False
 
-        center = pyautogui.locateCenterOnScreen(self.get_image_path("finish.png"), confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(
+            self.get_image_path("finish.png"), confidence=0.9
+        )
         if not center:
             return False
 
