@@ -22,9 +22,11 @@ class SelectZeroPointAlignment(Workflow):
         # select the zero point alignment option
         self.click_at(36, y_offset, relative_to_right_window_side=True)
 
+        pyautogui.sleep(2)
+
         # Quick check if the selection was successful
         center = pyautogui.locateCenterOnScreen(
-            "images/recalibrate-zero-point.png", confidence=0.9
+            self.get_image_path("recalibrate-zero-point.png"), confidence=0.9
         )
         if not center:
             return False
