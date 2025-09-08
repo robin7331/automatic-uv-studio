@@ -75,13 +75,16 @@ logger = setup_logging()
 
 def prepare_window():
     # activate the window and raise an error if not found
-    window = pwc.getWindowsWithTitle("eufy", pwc.Re.CONTAINS)
-    if not window and not window[0]:
+    windows = pwc.getWindowsWithTitle("eufy", pwc.Re.CONTAINS)
+    # If no window is found, return False (caller handles error/reporting)
+    if not windows:
         return False
-    window[0].activate(wait=True)
+
+    window = windows[0]
+    window.activate(wait=True)
 
     # get the window size and position
-    return window[0].rect
+    return window.rect
 
 
 def stop_print():
@@ -113,6 +116,13 @@ def start_print(canvas_index=0):
     global stop_print_event
 
     window_rect = prepare_window()
+
+    if not window_rect:
+        error_msg = f"Could not prepare window"
+        print(error_msg)
+        logger.error(error_msg)
+        publish_status_message(error_msg, "error")
+        return False
 
     prefix = "[12mm] " if canvas_index == 0 else "[16mm] "
 
