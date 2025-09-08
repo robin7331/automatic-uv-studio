@@ -520,45 +520,100 @@ async def start_mqtt_broker(host="localhost", port=1883):
 
         logger.info(f"Starting embedded MQTT broker on {host}:{port}")
 
-        # Handle Windows binding issues
+        # Handle Windows binding issues - try different binding approaches
+        bind_address = host
+
         if host == "0.0.0.0":
-            # On Windows, try using the actual IP address or localhost
+            # On Windows, aMQTT doesn't like 0.0.0.0, try alternatives
             import socket
 
             try:
-                # Get the local IP address
+                # Method 1: Get the local IP address
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.connect(("8.8.8.8", 80))
                 local_ip = s.getsockname()[0]
                 s.close()
-                host = local_ip
-                logger.info(f"Using local IP address for binding: {host}")
-            except Exception:
-                host = "localhost"
-                logger.info("Falling back to localhost for binding")
+                bind_address = local_ip
+                logger.info(f"Using local IP address for binding: {bind_address}")
+            except Exception as e:
+                logger.warning(f"Could not get local IP: {e}")
+                # Method 2: Try getting hostname IP
+                try:
+                    hostname = socket.gethostname()
+                    bind_address = socket.gethostbyname(hostname)
+                    logger.info(f"Using hostname IP for binding: {bind_address}")
+                except Exception as e2:
+                    logger.warning(f"Could not get hostname IP: {e2}")
+                    # Method 3: Fall back to localhost
+                    bind_address = "127.0.0.1"
+                    logger.info("Falling back to 127.0.0.1 for binding")
 
-        # Configuration for the broker
-        broker_config = {
-            "listeners": {
-                "default": {
-                    "type": "tcp",
-                    "bind": f"{host}:{port}",
-                    "max_connections": 50,
-                }
+        # Configuration for the broker - try different binding formats
+        broker_configs = [
+            # Try the resolved IP first
+            {
+                "listeners": {
+                    "default": {
+                        "type": "tcp",
+                        "bind": f"{bind_address}:{port}",
+                        "max_connections": 50,
+                    }
+                },
             },
-        }
+            # Fallback to localhost
+            {
+                "listeners": {
+                    "default": {
+                        "type": "tcp",
+                        "bind": f"127.0.0.1:{port}",
+                        "max_connections": 50,
+                    }
+                },
+            },
+            # Last resort - just port
+            {
+                "listeners": {
+                    "default": {
+                        "type": "tcp",
+                        "bind": f":{port}",
+                        "max_connections": 50,
+                    }
+                },
+            },
+        ]
 
-        broker = Broker(config=broker_config)
+        broker = None
+        for i, config in enumerate(broker_configs):
+            try:
+                logger.info(
+                    f"Trying broker configuration {i+1}: {config['listeners']['default']['bind']}"
+                )
+                broker = Broker(config=config)
+                await broker.start()
+                actual_bind = config["listeners"]["default"]["bind"]
+                logger.info(f"MQTT broker successfully started on {actual_bind}")
+                break
+            except Exception as e:
+                logger.warning(f"Broker config {i+1} failed: {e}")
+                if broker:
+                    try:
+                        await broker.shutdown()
+                    except:
+                        pass
+                broker = None
+                continue
+
+        if not broker:
+            raise Exception("All broker configurations failed")
 
         try:
-            await broker.start()
-            logger.info(f"MQTT broker successfully started on {host}:{port}")
             # Keep the broker running
             await asyncio.sleep(float("inf"))
         except asyncio.CancelledError:
             logger.info("Broker shutdown requested")
         finally:
-            await broker.shutdown()
+            if broker:
+                await broker.shutdown()
 
     except Exception as e:
         logger.error(f"Failed to start MQTT broker: {str(e)}")
