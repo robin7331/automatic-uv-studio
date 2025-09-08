@@ -18,10 +18,8 @@ import json
 import time
 import argparse
 import asyncio
-import signal
 from amqtt.client import MQTTClient
-from amqtt.mqtt.constants import QOS_1, QOS_2
-from amqtt.errors import ClientError
+from amqtt.mqtt.constants import QOS_1
 
 pyscreeze.USE_IMAGE_NOT_FOUND_EXCEPTION = False
 
@@ -35,10 +33,8 @@ print_lock = threading.Lock()
 current_print_thread = None
 stop_print_event = threading.Event()
 mqtt_client = None
-mqtt_broker_process = None
-broker_config = None
-event_loop = None
 low_ink = False
+mqtt_loop = None
 
 
 class Config:
@@ -62,42 +58,9 @@ class Config:
 config = Config()
 
 
-class MQTTLogHandler(logging.Handler):
-    """Custom logging handler that sends log messages to MQTT"""
-
-    def __init__(self, mqtt_client, topic):
-        super().__init__()
-        self.mqtt_client = mqtt_client
-        self.topic = topic
-
-    def emit(self, record):
-        if (
-            self.mqtt_client
-            and hasattr(self.mqtt_client, "_connected")
-            and self.mqtt_client._connected
-        ):
-            try:
-                log_message = {
-                    "timestamp": time.time(),
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                    "module": record.module,
-                }
-                # Schedule async publish in the background
-                asyncio.create_task(self._async_publish(json.dumps(log_message)))
-            except Exception:
-                pass  # Don't let MQTT failures break logging
-
-    async def _async_publish(self, message):
-        try:
-            await self.mqtt_client.publish(self.topic, message.encode())
-        except Exception:
-            pass
-
-
 # Configure logging
 def setup_logging():
-    """Setup logging with both console and MQTT handlers"""
+    """Setup logging with console handler"""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -124,6 +87,11 @@ def prepare_window():
 def stop_print():
     window_rect = prepare_window()
 
+    prepare_msg = f"Stopping"
+    print(prepare_msg)
+    logger.info(prepare_msg)
+    publish_status_message(prepare_msg, "info")
+
     if not window_rect:
         error_msg = f"Could not prepare window"
         print(error_msg)
@@ -131,18 +99,18 @@ def stop_print():
         publish_status_message(error_msg, "error")
         return False
 
+    # reset the screen
     stop = Stop(window_rect=window_rect)
     if not stop.run():
-        error_msg = f"Could not stop the task"
+        error_msg = f"Could not stop"
         print(error_msg)
         logger.error(error_msg)
         publish_status_message(error_msg, "error")
         return False
 
 
-def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=False):
+def start_print(canvas_index=0):
     global stop_print_event
-    global low_ink
 
     window_rect = prepare_window()
 
@@ -155,6 +123,7 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
 
     # Check for stop signal
     if stop_print_event.is_set():
+        logger.info(f"{prefix}Print stopped during preparation")
         return False
 
     if not window_rect:
@@ -175,6 +144,7 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
 
     # Check for stop signal
     if stop_print_event.is_set():
+        logger.info(f"{prefix}Print stopped during UI reset")
         return False
 
     # check if printer online
@@ -188,18 +158,7 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
 
     # Check for stop signal
     if stop_print_event.is_set():
-        return False
-
-    check_if_moisturized = CheckIfShouldMoisturize(window_rect=window_rect)
-    if not check_if_moisturized.run():
-        error_msg = f"{prefix}Printer not moisturized"
-        print(error_msg)
-        logger.error(error_msg)
-        publish_status_message(error_msg, "error")
-        return False
-
-    # Check for stop signal
-    if stop_print_event.is_set():
+        logger.info(f"{prefix}Print stopped during online check")
         return False
 
     # Make sure the printer is idle
@@ -213,36 +172,25 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
 
     # Check for stop signal
     if stop_print_event.is_set():
+        logger.info(f"{prefix}Print stopped during idle check")
         return False
 
-    # Check for low ink
-    check_if_low_ink = CheckIfLowInk(window_rect=window_rect)
-    low_ink = not check_if_low_ink.run()
-
     # Scan the tray
-    if should_scan_tray:
-        scan_msg = f"{prefix}Scanning the tray"
-        print(scan_msg)
-        logger.info(scan_msg)
-        publish_status_message(scan_msg, "info")
-        scan_tray = ScanTray(window_rect=window_rect)
-        if not scan_tray.run(canvas_index=canvas_index):
-            error_msg = f"{prefix}Failed to scan tray"
-            print(error_msg)
-            logger.error(error_msg)
-            publish_status_message(error_msg, "error")
-            return False
-    else:
-        select_zeropoint = SelectZeroPointAlignment(window_rect=window_rect)
-        if not select_zeropoint.run(canvas_index=canvas_index):
-            error_msg = f"{prefix}Failed to select zero point alignment"
-            print(error_msg)
-            logger.error(error_msg)
-            publish_status_message(error_msg, "error")
-            return False
+    scan_msg = f"{prefix}Scanning the tray"
+    print(scan_msg)
+    logger.info(scan_msg)
+    publish_status_message(scan_msg, "info")
+    scan_tray = ScanTray(window_rect=window_rect)
+    if not scan_tray.run(canvas_index=canvas_index):
+        error_msg = f"{prefix}Failed to scan tray"
+        print(error_msg)
+        logger.error(error_msg)
+        publish_status_message(error_msg, "error")
+        return False
 
     # Check for stop signal
     if stop_print_event.is_set():
+        logger.info(f"{prefix}Print stopped during tray scan")
         return False
 
     # Print
@@ -251,10 +199,10 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
     print(start_msg)
     logger.info(start_msg)
     publish_status_message(start_msg, "info")
-    start_print = StartPrint(
+    start_print_workflow = StartPrint(
         window_rect=window_rect, publish_control_message=publish_control_message
     )
-    if not start_print.run(canvas_index=canvas_index):
+    if not start_print_workflow.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to print"
         print(error_msg)
         logger.error(error_msg)
@@ -273,18 +221,9 @@ def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=F
     return True
 
 
-def log_stop():
-    logger.info(f"[{print_type}] print was stopped")
-    publish_status_message(f"[{print_type}] print was stopped", "info")
-
-
 def start_print_async(canvas_index, print_type):
     """Run the print workflow asynchronously"""
     global current_print_thread, stop_print_event
-
-    # Set to False will use the zero reference printing without prescannung
-    # True will scan and print without using the reference feature.
-    should_scan_tray = False
 
     # Check if we can acquire the lock (non-blocking)
     if not print_lock.acquire(blocking=False):
@@ -301,23 +240,26 @@ def start_print_async(canvas_index, print_type):
         stop_print_event.clear()
 
         current_print_thread = threading.current_thread()
-        start_msg = f"Starting {print_type} print"
+        start_msg = f"Starting {print_type} print (canvas_index={canvas_index})"
         logger.info(start_msg)
         print(start_msg)
         publish_status_message(start_msg, "info")
 
+        # Check for stop signal before starting
         if stop_print_event.is_set():
-            log_stop()
+            logger.info(f"{print_type} print was stopped before starting")
+            publish_status_message(
+                f"{print_type} print was stopped before starting", "info"
+            )
             return False
 
-        success = start_print(
-            canvas_index=canvas_index,
-            publish_control_message=publish_control_message,
-            should_scan_tray=should_scan_tray,
-        )
+        success = start_print(canvas_index=canvas_index)
 
+        # Check for stop signal after print attempt
         if stop_print_event.is_set():
-            log_stop()
+            logger.info(f"{print_type} print was stopped")
+            publish_status_message(f"{print_type} print was stopped", "info")
+            stop_print()  # Call the stop_print function to handle cleanup
             return False
 
         if success:
@@ -344,109 +286,80 @@ def start_print_async(canvas_index, print_type):
         finish_msg = f"{print_type} print thread finished"
         logger.info(finish_msg)
         print(finish_msg)
+        publish_status_message(finish_msg, "info")
 
 
 def publish_status_message(message, level="info"):
-    """Publish a status message to MQTT (sync wrapper)"""
-    global event_loop
+    """Publish a status message to MQTT"""
+    global mqtt_loop
 
-    if event_loop and event_loop.is_running():
-        # Schedule the coroutine to run in the event loop from another thread
-        asyncio.run_coroutine_threadsafe(
-            publish_status_message_async(message, level), event_loop
-        )
+    if mqtt_loop and not mqtt_loop.is_closed():
+        status_message = {
+            "timestamp": time.time(),
+            "level": level,
+            "message": message,
+            "print_job_running": current_print_thread
+            and current_print_thread.is_alive(),
+        }
+
+        # Schedule the async publish on the event loop
+        try:
+            asyncio.run_coroutine_threadsafe(
+                _publish_status_async(status_message), mqtt_loop
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule status message: {str(e)}")
     else:
-        logger.warning("No event loop available for publishing status message")
+        logger.warning("MQTT client not connected, cannot publish status message")
+
+
+async def _publish_status_async(status_message):
+    """Async helper to publish status message"""
+    global mqtt_client
+
+    if mqtt_client:
+        try:
+            await mqtt_client.publish(
+                config.topic_status, json.dumps(status_message).encode(), qos=QOS_1
+            )
+            logger.debug(f"Published status: {status_message['message']}")
+        except Exception as e:
+            logger.error(f"Failed to publish MQTT status message: {str(e)}")
 
 
 def publish_control_message(action):
-    """Publish a control message to MQTT (sync wrapper)"""
-    global event_loop
+    """Publish a control message to MQTT"""
+    global mqtt_loop
 
-    if event_loop and event_loop.is_running():
-        # Schedule the coroutine to run in the event loop from another thread
-        asyncio.run_coroutine_threadsafe(
-            publish_control_message_async(action), event_loop
-        )
+    if mqtt_loop and not mqtt_loop.is_closed():
+        control_message = {"action": action, "timestamp": time.time()}
+
+        # Schedule the async publish on the event loop
+        try:
+            asyncio.run_coroutine_threadsafe(
+                _publish_control_async(control_message), mqtt_loop
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule control message: {str(e)}")
     else:
-        logger.warning("No event loop available for publishing control message")
+        logger.warning("MQTT client not connected, cannot publish control message")
 
 
-async def publish_control_message_async(action):
-    """Publish a control message to MQTT asynchronously"""
-    control_message = {"action": action, "timestamp": time.time()}
-    try:
-        await mqtt_client.publish(
-            config.topic_control, json.dumps(control_message).encode(), qos=QOS_1
-        )
-        logger.info(f"Published control message: {action}")
-    except Exception as e:
-        logger.error(f"Failed to publish control message: {str(e)}")
-
-
-async def mqtt_message_handler():
-    """Handle incoming MQTT messages"""
+async def _publish_control_async(control_message):
+    """Async helper to publish control message"""
     global mqtt_client
 
-    try:
-        while True:
-            message = await mqtt_client.deliver_message()
-            packet = message.publish_packet
-            topic = packet.variable_header.topic_name
-            payload = packet.payload.data.decode()
-
-            logger.info(f"Received MQTT message on topic {topic}: {payload}")
-
-            try:
-                payload_json = json.loads(payload)
-
-                if topic == config.topic_command:
-                    command = payload_json.get("command")
-
-                    if command == "start_12mm_print":
-                        handle_start_print_command("12mm", 0)
-                    elif command == "start_16mm_print":
-                        handle_start_print_command("16mm", 1)
-                    elif command == "status":
-                        handle_status_command()
-                    elif command == "stop":
-                        handle_stop_command()
-                    else:
-                        logger.warning(f"Unknown command: {command}")
-                        await publish_status_message_async(
-                            f"Unknown command: {command}", "warning"
-                        )
-
-            except json.JSONDecodeError:
-                logger.error("Failed to decode JSON message")
-                await publish_status_message_async(
-                    "Failed to decode JSON message", "error"
-                )
-
-    except ClientError as e:
-        logger.error(f"MQTT Client exception: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error in MQTT message handler: {str(e)}")
+    if mqtt_client:
+        try:
+            await mqtt_client.publish(
+                config.topic_control, json.dumps(control_message).encode(), qos=QOS_1
+            )
+            logger.info(f"Published control message: {control_message['action']}")
+        except Exception as e:
+            logger.error(f"Failed to publish control message: {str(e)}")
 
 
-async def publish_status_message_async(message, level="info"):
-    """Publish a status message to MQTT asynchronously"""
-    status_message = {
-        "timestamp": time.time(),
-        "level": level,
-        "message": message,
-        "low_ink": low_ink,
-        "print_job_running2": current_print_thread and current_print_thread.is_alive(),
-    }
-    try:
-        await mqtt_client.publish(
-            config.topic_status, json.dumps(status_message).encode(), qos=QOS_1
-        )
-    except Exception as e:
-        logger.error(f"Failed to publish MQTT message: {str(e)}")
-
-
-def handle_start_print_command(print_type, canvas_index, should_scan_tray=False):
+def handle_start_print_command(print_type, canvas_index):
     """Handle start print command from MQTT"""
     # Check if another print is already running
     if current_print_thread and current_print_thread.is_alive():
@@ -462,6 +375,10 @@ def handle_start_print_command(print_type, canvas_index, should_scan_tray=False)
         target=start_print_async, args=(canvas_index, print_type), daemon=True
     )
     thread.start()
+
+    success_msg = f"{print_type} print job started"
+    logger.info(success_msg)
+    publish_status_message(success_msg, "info")
 
 
 def handle_status_command():
@@ -484,140 +401,124 @@ def handle_stop_command():
         stop_print()
 
         logger.info("Print job stop signal sent")
+        publish_status_message("Print job stop signal sent", "info")
     else:
         logger.warning("No print job is currently running")
+        publish_status_message("No print job is currently running", "warning")
 
 
-async def setup_mqtt():
-    """Setup MQTT client and connect to broker"""
+# MQTT async functions for aMQTT
+async def handle_mqtt_message(topic, payload):
+    """Handle incoming MQTT messages"""
+    try:
+        payload_str = payload.decode()
+        logger.info(f"Received MQTT message on topic {topic}: {payload_str}")
+
+        payload_json = json.loads(payload_str)
+
+        if topic == config.topic_command:
+            command = payload_json.get("command")
+
+            if command == "start_12mm_print":
+                handle_start_print_command("12mm", 0)
+            elif command == "start_16mm_print":
+                handle_start_print_command("16mm", 1)
+            elif command == "status":
+                handle_status_command()
+            elif command == "stop":
+                handle_stop_command()
+            else:
+                logger.warning(f"Unknown command: {command}")
+                publish_status_message(f"Unknown command: {command}", "warning")
+
+    except json.JSONDecodeError:
+        logger.error("Failed to decode JSON message")
+        publish_status_message("Failed to decode JSON message", "error")
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        publish_status_message(f"Error processing message: {str(e)}", "error")
+
+
+async def mqtt_message_handler():
+    """Async message handler for aMQTT"""
+    global mqtt_client
+
+    try:
+        while True:
+            message = await mqtt_client.deliver_message()
+            packet = message.publish_packet
+            topic = packet.variable_header.topic_name
+            payload = packet.payload.data
+
+            # Handle message in background to avoid blocking
+            asyncio.create_task(handle_mqtt_message(topic, payload))
+
+    except Exception as e:
+        logger.error(f"Error in MQTT message handler: {str(e)}")
+
+
+async def setup_mqtt_async():
+    """Setup aMQTT client and connect to broker"""
     global mqtt_client
 
     try:
         mqtt_client = MQTTClient()
 
-        logger.info(
-            f"Connecting to MQTT broker at {config.mqtt_broker}:{config.mqtt_port}"
-        )
-        await mqtt_client.connect(f"mqtt://{config.mqtt_broker}:{config.mqtt_port}/")
+        broker_url = f"mqtt://{config.mqtt_broker}:{config.mqtt_port}"
+        logger.info(f"Connecting to MQTT broker at {broker_url}")
+
+        await mqtt_client.connect(broker_url)
+        logger.info("Connected to MQTT broker")
 
         # Subscribe to command topic
         await mqtt_client.subscribe([(config.topic_command, QOS_1)])
         logger.info(f"Subscribed to {config.topic_command}")
 
-        logger.info("Connected to MQTT broker")
-        await publish_status_message_async("UV Studio connected to MQTT broker", "info")
+        # Send initial status
+        await _publish_status_async(
+            {
+                "timestamp": time.time(),
+                "level": "info",
+                "message": "UV Studio connected to MQTT broker",
+                "print_job_running": False,
+            }
+        )
+
+        # Start message handler
+        asyncio.create_task(mqtt_message_handler())
 
         return True
+
     except Exception as e:
         logger.error(f"Failed to connect to MQTT broker: {str(e)}")
         return False
 
 
-async def start_mqtt_broker(host="localhost", port=1883):
-    """Start an embedded MQTT broker using aMQTT"""
-    try:
-        from amqtt.broker import Broker
+def setup_mqtt():
+    """Setup MQTT client and start async loop"""
+    global mqtt_loop
 
-        logger.info(f"Starting embedded MQTT broker on {host}:{port}")
+    # Create new event loop for MQTT
+    mqtt_loop = asyncio.new_event_loop()
 
-        # Handle Windows binding issues - try different binding approaches
-        bind_address = host
-
-        if host == "0.0.0.0":
-            # On Windows, aMQTT doesn't like 0.0.0.0, try alternatives
-            import socket
-
-            try:
-                # Method 1: Get the local IP address
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-                s.close()
-                bind_address = local_ip
-                logger.info(f"Using local IP address for binding: {bind_address}")
-            except Exception as e:
-                logger.warning(f"Could not get local IP: {e}")
-                # Method 2: Try getting hostname IP
-                try:
-                    hostname = socket.gethostname()
-                    bind_address = socket.gethostbyname(hostname)
-                    logger.info(f"Using hostname IP for binding: {bind_address}")
-                except Exception as e2:
-                    logger.warning(f"Could not get hostname IP: {e2}")
-                    # Method 3: Fall back to localhost
-                    bind_address = "127.0.0.1"
-                    logger.info("Falling back to 127.0.0.1 for binding")
-
-        # Configuration for the broker - try different binding formats
-        broker_configs = [
-            # Try the resolved IP first
-            {
-                "listeners": {
-                    "default": {
-                        "type": "tcp",
-                        "bind": f"{bind_address}:{port}",
-                        "max_connections": 50,
-                    }
-                },
-            },
-            # Fallback to localhost
-            {
-                "listeners": {
-                    "default": {
-                        "type": "tcp",
-                        "bind": f"127.0.0.1:{port}",
-                        "max_connections": 50,
-                    }
-                },
-            },
-            # Last resort - just port
-            {
-                "listeners": {
-                    "default": {
-                        "type": "tcp",
-                        "bind": f":{port}",
-                        "max_connections": 50,
-                    }
-                },
-            },
-        ]
-
-        broker = None
-        for i, config in enumerate(broker_configs):
-            try:
-                logger.info(
-                    f"Trying broker configuration {i+1}: {config['listeners']['default']['bind']}"
-                )
-                broker = Broker(config=config)
-                await broker.start()
-                actual_bind = config["listeners"]["default"]["bind"]
-                logger.info(f"MQTT broker successfully started on {actual_bind}")
-                break
-            except Exception as e:
-                logger.warning(f"Broker config {i+1} failed: {e}")
-                if broker:
-                    try:
-                        await broker.shutdown()
-                    except:
-                        pass
-                broker = None
-                continue
-
-        if not broker:
-            raise Exception("All broker configurations failed")
-
+    def run_mqtt_loop():
+        asyncio.set_event_loop(mqtt_loop)
         try:
-            # Keep the broker running
-            await asyncio.sleep(float("inf"))
-        except asyncio.CancelledError:
-            logger.info("Broker shutdown requested")
+            mqtt_loop.run_until_complete(setup_mqtt_async())
+            mqtt_loop.run_forever()
+        except Exception as e:
+            logger.error(f"MQTT loop error: {str(e)}")
         finally:
-            if broker:
-                await broker.shutdown()
+            mqtt_loop.close()
 
-    except Exception as e:
-        logger.error(f"Failed to start MQTT broker: {str(e)}")
-        return False
+    # Start MQTT loop in separate thread
+    mqtt_thread = threading.Thread(target=run_mqtt_loop, daemon=True)
+    mqtt_thread.start()
+
+    # Give it a moment to connect
+    time.sleep(2)
+
+    return True
 
 
 def parse_arguments():
@@ -643,27 +544,12 @@ def parse_arguments():
         help=f"MQTT topic prefix (default: {DEFAULT_TOPIC_PREFIX})",
     )
 
-    parser.add_argument(
-        "--start-broker",
-        action="store_true",
-        help="Start an embedded MQTT broker before connecting",
-    )
-
-    parser.add_argument(
-        "--broker-only",
-        action="store_true",
-        help="Only start the MQTT broker (don't start the UV Studio client)",
-    )
-
     return parser.parse_args()
 
 
-async def async_main():
-    """Async main function for MQTT client"""
-    global config, event_loop
-
-    # Set the global event loop reference
-    event_loop = asyncio.get_event_loop()
+def main():
+    """Main entry point"""
+    global config, mqtt_client, mqtt_loop
 
     # Parse command line arguments
     args = parse_arguments()
@@ -680,67 +566,33 @@ async def async_main():
         f"Configuration: broker={config.mqtt_broker}:{config.mqtt_port}, prefix={config.topic_prefix}"
     )
 
-    # Start embedded MQTT broker if requested
-    if args.start_broker or args.broker_only:
-        logger.info("Starting embedded MQTT broker...")
-        try:
-            # Start broker in background task
-            broker_task = asyncio.create_task(
-                start_mqtt_broker(config.mqtt_broker, config.mqtt_port)
-            )
-
-            # Give the broker time to start
-            await asyncio.sleep(2)
-            logger.info(
-                f"MQTT broker started on {config.mqtt_broker}:{config.mqtt_port}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to start MQTT broker: {str(e)}")
-            if args.broker_only:
-                return
-
-    # If broker-only mode, just keep the broker running
-    if args.broker_only:
-        logger.info("Running in broker-only mode. Press Ctrl+C to stop.")
-        try:
-            await asyncio.sleep(float("inf"))
-        except KeyboardInterrupt:
-            logger.info("Shutting down broker...")
-        return
-
     # Setup MQTT connection
-    if not await setup_mqtt():
+    if not setup_mqtt():
         logger.error("Failed to setup MQTT connection. Exiting.")
         return
 
-    # Start message handler task
-    message_handler_task = asyncio.create_task(mqtt_message_handler())
-
     logger.info("UV Studio MQTT client is running. Waiting for commands...")
-    await publish_status_message_async(
-        "UV Studio MQTT client started and ready", "info"
-    )
+
+    # Give MQTT time to connect and send initial status
+    time.sleep(3)
+    publish_status_message("UV Studio MQTT client started and ready", "info")
 
     try:
-        # Keep the main loop alive
-        await asyncio.sleep(float("inf"))
+        # Keep the main thread alive
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
-        await publish_status_message_async(
-            "UV Studio MQTT client shutting down", "info"
-        )
-        message_handler_task.cancel()
-        if mqtt_client:
-            await mqtt_client.disconnect()
+        publish_status_message("UV Studio MQTT client shutting down", "info")
 
+        # Cleanup MQTT
+        if mqtt_loop and not mqtt_loop.is_closed():
+            if mqtt_client:
+                # Schedule disconnect on the MQTT loop
+                asyncio.run_coroutine_threadsafe(mqtt_client.disconnect(), mqtt_loop)
+            mqtt_loop.call_soon_threadsafe(mqtt_loop.stop)
 
-def main():
-    """Main entry point"""
-    try:
-        asyncio.run(async_main())
-    except KeyboardInterrupt:
-        logger.info("Application terminated by user")
+        time.sleep(1)  # Give time for cleanup
 
 
 if __name__ == "__main__":

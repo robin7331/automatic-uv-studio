@@ -30,11 +30,17 @@ echo - LAN Access: %LOCAL_IP%:1883
 echo - Topics: uv_studio/command, uv_studio/status, uv_studio/control
 echo.
 
-echo Starting Mosquitto MQTT Broker...
-start "Mosquitto MQTT Broker" /min "%MOSQUITTO_PATH%" -c "%SCRIPT_DIR%mosquitto.conf" -v
-
-echo Waiting for broker to start...
-timeout /t 3 /nobreak >nul
+REM Check if Mosquitto is already running
+echo Checking if Mosquitto is already running...
+tasklist /fi "imagename eq mosquitto.exe" 2>nul | find /i "mosquitto.exe" >nul
+if %errorlevel% equ 0 (
+    echo Mosquitto is already running - skipping startup
+) else (
+    echo Starting Mosquitto MQTT Broker...
+    start "Mosquitto MQTT Broker" /min "%MOSQUITTO_PATH%" -c "%SCRIPT_DIR%mosquitto.conf" -v
+    echo Waiting for broker to start...
+    timeout /t 3 /nobreak >nul
+)
 
 echo Starting UV Studio MQTT Client...
 powershell -NoExit -Command "cd '%SCRIPT_DIR%'; echo 'UV Studio starting...'; uv run main.py --broker-host localhost --broker-port 1883"
