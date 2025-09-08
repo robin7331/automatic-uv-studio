@@ -27,6 +27,7 @@ pyscreeze.USE_IMAGE_NOT_FOUND_EXCEPTION = False
 DEFAULT_MQTT_BROKER = "localhost"
 DEFAULT_MQTT_PORT = 1883
 DEFAULT_TOPIC_PREFIX = "uv_studio"
+DEFAULT_WINDOW_TITLE = "eufy"
 
 # Global variables
 print_lock = threading.Lock()
@@ -45,6 +46,7 @@ class Config:
         broker_host=DEFAULT_MQTT_BROKER,
         broker_port=DEFAULT_MQTT_PORT,
         topic_prefix=DEFAULT_TOPIC_PREFIX,
+        window_title=DEFAULT_WINDOW_TITLE,
     ):
         self.mqtt_broker = broker_host
         self.mqtt_port = broker_port
@@ -52,6 +54,7 @@ class Config:
         self.topic_command = f"{topic_prefix}/command"
         self.topic_status = f"{topic_prefix}/status"
         self.topic_control = f"{topic_prefix}/control"
+        self.window_title = window_title
 
 
 # Global config instance
@@ -75,9 +78,19 @@ logger = setup_logging()
 
 def prepare_window():
     # activate the window and raise an error if not found
-    windows = pwc.getWindowsWithTitle("eufy", pwc.Re.CONTAINS)
-    # If no window is found, return False (caller handles error/reporting)
+    windows = pwc.getWindowsWithTitle(
+        config.window_title, condition=pwc.Re.CONTAINS, flags=pwc.Re.IGNORECASE
+    )
+    # If no window is found, log available titles to help debugging
     if not windows:
+        try:
+            titles = pwc.getAllTitles()
+            logger.error(
+                f"No window found containing '{config.window_title}'. Open windows: "
+                + ", ".join(titles[:20])
+            )
+        except Exception:
+            logger.error(f"No window found containing '{config.window_title}'.")
         return False
 
     window = windows[0]
@@ -554,6 +567,12 @@ def parse_arguments():
         help=f"MQTT topic prefix (default: {DEFAULT_TOPIC_PREFIX})",
     )
 
+    parser.add_argument(
+        "--window-title",
+        default=DEFAULT_WINDOW_TITLE,
+        help=f"Substring of the target app window title (default: {DEFAULT_WINDOW_TITLE})",
+    )
+
     return parser.parse_args()
 
 
@@ -569,11 +588,12 @@ def main():
         broker_host=args.broker_host,
         broker_port=args.broker_port,
         topic_prefix=args.topic_prefix,
+        window_title=args.window_title,
     )
 
     logger.info("Starting automatic-uv-studio MQTT client...")
     logger.info(
-        f"Configuration: broker={config.mqtt_broker}:{config.mqtt_port}, prefix={config.topic_prefix}"
+        f"Configuration: broker={config.mqtt_broker}:{config.mqtt_port}, prefix={config.topic_prefix}, window_title~='{config.window_title}'"
     )
 
     # Setup MQTT connection
