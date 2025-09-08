@@ -12,8 +12,11 @@ class Workflow:
             return (point.x / 2, point.y / 2)
         return (point.x, point.y)
 
-    def click_at(self, x, y, sleep=True):
-        pyautogui.click(self.window_rect.left + x, self.window_rect.top + y)
+    def click_at(self, x, y, sleep=True, relative_to_right_window_side=False):
+        if relative_to_right_window_side:
+            pyautogui.click(self.window_rect.right - x, self.window_rect.top + y)
+        else:
+            pyautogui.click(self.window_rect.left + x, self.window_rect.top + y)
         if sleep:
             pyautogui.sleep(1)
 

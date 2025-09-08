@@ -8,6 +8,7 @@ from workflows.workflow import Workflow
 from workflows.start_print import StartPrint
 from workflows.stop import Stop
 from workflows.check_if_low_ink import CheckIfLowInk
+from workflows.check_if_should_moisturize import CheckIfShouldMoisturize
 import pyscreeze
 import threading
 import logging
@@ -138,7 +139,7 @@ def stop_print():
         return False
 
 
-def start_print(canvas_index=0, publish_control_message=None):
+def start_print(canvas_index=0, publish_control_message=None, should_scan_tray=False):
     global stop_print_event
     global low_ink
 
@@ -188,6 +189,18 @@ def start_print(canvas_index=0, publish_control_message=None):
     if stop_print_event.is_set():
         return False
 
+    check_if_moisturized = CheckIfShouldMoisturize(window_rect=window_rect)
+    if not check_if_moisturized.run():
+        error_msg = f"{prefix}Printer not moisturized"
+        print(error_msg)
+        logger.error(error_msg)
+        publish_status_message(error_msg, "error")
+        return False
+
+    # Check for stop signal
+    if stop_print_event.is_set():
+        return False
+
     # Make sure the printer is idle
     check_if_idle = CheckIfIdle(window_rect=window_rect)
     if not check_if_idle.run():
@@ -206,17 +219,20 @@ def start_print(canvas_index=0, publish_control_message=None):
     low_ink = not check_if_low_ink.run()
 
     # Scan the tray
-    scan_msg = f"{prefix}Scanning the tray"
-    print(scan_msg)
-    logger.info(scan_msg)
-    publish_status_message(scan_msg, "info")
-    scan_tray = ScanTray(window_rect=window_rect)
-    if not scan_tray.run(canvas_index=canvas_index):
-        error_msg = f"{prefix}Failed to scan tray"
-        print(error_msg)
-        logger.error(error_msg)
-        publish_status_message(error_msg, "error")
-        return False
+    if should_scan_tray:
+        scan_msg = f"{prefix}Scanning the tray"
+        print(scan_msg)
+        logger.info(scan_msg)
+        publish_status_message(scan_msg, "info")
+        scan_tray = ScanTray(window_rect=window_rect)
+        if not scan_tray.run(canvas_index=canvas_index):
+            error_msg = f"{prefix}Failed to scan tray"
+            print(error_msg)
+            logger.error(error_msg)
+            publish_status_message(error_msg, "error")
+            return False
+    else:
+        pass
 
     # Check for stop signal
     if stop_print_event.is_set():
@@ -259,6 +275,8 @@ def start_print_async(canvas_index, print_type):
     """Run the print workflow asynchronously"""
     global current_print_thread, stop_print_event
 
+    should_scan_tray = True
+
     # Check if we can acquire the lock (non-blocking)
     if not print_lock.acquire(blocking=False):
         error_msg = (
@@ -284,7 +302,9 @@ def start_print_async(canvas_index, print_type):
             return False
 
         success = start_print(
-            canvas_index=canvas_index, publish_control_message=publish_control_message
+            canvas_index=canvas_index,
+            publish_control_message=publish_control_message,
+            should_scan_tray=should_scan_tray,
         )
 
         if stop_print_event.is_set():
@@ -417,7 +437,7 @@ async def publish_status_message_async(message, level="info"):
         logger.error(f"Failed to publish MQTT message: {str(e)}")
 
 
-def handle_start_print_command(print_type, canvas_index):
+def handle_start_print_command(print_type, canvas_index, should_scan_tray=False):
     """Handle start print command from MQTT"""
     # Check if another print is already running
     if current_print_thread and current_print_thread.is_alive():
@@ -490,6 +510,23 @@ async def start_mqtt_broker(host="localhost", port=1883):
         from amqtt.broker import Broker
 
         logger.info(f"Starting embedded MQTT broker on {host}:{port}")
+
+        # Handle Windows binding issues
+        if host == "0.0.0.0":
+            # On Windows, try using the actual IP address or localhost
+            import socket
+
+            try:
+                # Get the local IP address
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                host = local_ip
+                logger.info(f"Using local IP address for binding: {host}")
+            except Exception:
+                host = "localhost"
+                logger.info("Falling back to localhost for binding")
 
         # Configuration for the broker
         broker_config = {

@@ -12,6 +12,9 @@ class ScanTray(Workflow):
 
         self.click_canvas_index(index=canvas_index)
 
+        # select the scan tray option
+        self.click_at(36, 360, relative_to_right_window_side=True)
+
         center = pyautogui.locateCenterOnScreen("images/snapshot.png", confidence=0.9)
         if not center:
             return False
