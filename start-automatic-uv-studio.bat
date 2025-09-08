@@ -1,6 +1,6 @@
 @echo off
 REM Change this to your target directory
-set TARGET_DIR=C:\path\to\your\project
+set SCRIPT_DIR=%~dp0
 
-REM Use PowerShell to navigate and run the command
-powershell -NoExit -Command "cd '%TARGET_DIR%'; uv run main.py --start-broker"
+REM Use PowerShell to change into that directory and run uv
+powershell -NoExit -Command "cd '%SCRIPT_DIR%'; uv run main.py --start-broker"
