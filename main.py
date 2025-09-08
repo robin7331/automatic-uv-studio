@@ -587,7 +587,32 @@ async def mqtt_message_handler():
         while mqtt_connected:
             try:
                 message = await mqtt_client.deliver_message()
+
+                # Check if message is None (can happen on disconnection/timeout)
+                if message is None:
+                    logger.warning("Received None message, connection may be lost")
+                    mqtt_connected = False
+                    # Trigger reconnection
+                    asyncio.create_task(mqtt_reconnect())
+                    break
+
+                # Check if message has the expected structure
+                if (
+                    not hasattr(message, "publish_packet")
+                    or message.publish_packet is None
+                ):
+                    logger.warning("Received malformed message")
+                    continue
+
                 packet = message.publish_packet
+
+                # Check if packet has the expected structure
+                if not hasattr(packet, "variable_header") or not hasattr(
+                    packet, "payload"
+                ):
+                    logger.warning("Received packet with missing data")
+                    continue
+
                 topic = packet.variable_header.topic_name
                 payload = packet.payload.data
 
