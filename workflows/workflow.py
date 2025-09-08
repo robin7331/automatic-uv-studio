@@ -26,7 +26,7 @@ class Workflow:
         else:
             pyautogui.click(self.window_rect.left + x, self.window_rect.top + y)
         if sleep:
-            pyautogui.sleep(1)
+            pyautogui.sleep(2)
 
     def click_home(self):
         self.click_at(45, 45)

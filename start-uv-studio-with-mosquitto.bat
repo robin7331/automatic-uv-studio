@@ -43,4 +43,4 @@ if %errorlevel% equ 0 (
 )
 
 echo Starting UV Studio MQTT Client...
-powershell -NoExit -Command "cd '%SCRIPT_DIR%'; echo 'UV Studio starting...'; uv run main.py --broker-host localhost --broker-port 1883 -no-retina"
+powershell -NoExit -Command "cd '%SCRIPT_DIR%'; echo 'UV Studio starting...'; uv run main.py --broker-host localhost --broker-port 1883 --no-retina"
