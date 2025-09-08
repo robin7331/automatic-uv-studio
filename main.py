@@ -590,11 +590,8 @@ async def mqtt_message_handler():
 
                 # Check if message is None (can happen on disconnection/timeout)
                 if message is None:
-                    logger.warning("Received None message, connection may be lost")
-                    mqtt_connected = False
-                    # Trigger reconnection
-                    asyncio.create_task(mqtt_reconnect())
-                    break
+                    logger.warning("Received None message, continuing...")
+                    continue
 
                 # Check if message has the expected structure
                 if (
