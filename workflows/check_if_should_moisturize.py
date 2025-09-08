@@ -17,7 +17,7 @@ class CheckIfShouldMoisturize(Workflow):
 
         # Check if the inject ink button is visible
         inject_ink = pyautogui.locateCenterOnScreen(
-            "images/inject-ink.png", confidence=0.9
+            self.get_image_path("inject-ink.png"), confidence=0.9
         )
         if inject_ink:
             pyautogui.click(self.transform_point_to_non_retina(inject_ink))
@@ -32,7 +32,7 @@ class CheckIfShouldMoisturize(Workflow):
         while True:
             pyautogui.sleep(1)
             online = pyautogui.locateOnScreen(
-                "images/inject-ink-complete.png", confidence=0.9
+                self.get_image_path("inject-ink-complete.png"), confidence=0.9
             )
             if online:
                 break
@@ -41,7 +41,9 @@ class CheckIfShouldMoisturize(Workflow):
                 return False
 
         # Confirm the completion dialog
-        confirm = pyautogui.locateCenterOnScreen(self.get_image_path("ok.png"), confidence=0.9)
+        confirm = pyautogui.locateCenterOnScreen(
+            self.get_image_path("ok.png"), confidence=0.9
+        )
         if confirm:
             pyautogui.click(self.transform_point_to_non_retina(confirm))
         else:

@@ -14,7 +14,9 @@ class Stop(Workflow):
         self.click_machine()
 
         # find the stop button
-        center = pyautogui.locateCenterOnScreen(self.get_image_path("stop.png"), confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(
+            self.get_image_path("stop.png"), confidence=0.9
+        )
         if not center:
             return False
 
@@ -23,7 +25,9 @@ class Stop(Workflow):
         pyautogui.sleep(2)
 
         # Find the confirm button
-        center = pyautogui.locateCenterOnScreen(self.get_image_path("confirm.png"), confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(
+            self.get_image_path("confirm.png"), confidence=0.9
+        )
         if not center:
             return False
 
@@ -33,7 +37,7 @@ class Stop(Workflow):
 
         # When stopping mid print (not just mid scanning) there will be a final dialog.
         center = pyautogui.locateCenterOnScreen(
-            "images/green-finish.png", confidence=0.9
+            self.get_image_path("green-finish.png"), confidence=0.9
         )
         if center:
             pyautogui.click(self.transform_point_to_non_retina(center))
