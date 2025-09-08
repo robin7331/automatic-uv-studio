@@ -131,8 +131,9 @@ def stop_print():
         return False
 
 
-def start_print(canvas_index=0):
+def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=None):
     global stop_print_event
+    global low_ink
 
     window_rect = prepare_window()
 
@@ -189,6 +190,18 @@ def start_print(canvas_index=0):
         publish_status_message(error_msg, "error")
         return False
 
+        # Check for stop signal
+    if stop_print_event.is_set():
+        return False
+
+    check_if_moisturized = CheckIfShouldMoisturize(window_rect=window_rect)
+    if not check_if_moisturized.run():
+        error_msg = f"{prefix}Printer not moisturized"
+        print(error_msg)
+        logger.error(error_msg)
+        publish_status_message(error_msg, "error")
+        return False
+
     # Check for stop signal
     if stop_print_event.is_set():
         logger.info(f"{prefix}Print stopped during online check")
@@ -210,20 +223,37 @@ def start_print(canvas_index=0):
         logger.info(f"{prefix}Print stopped during idle check")
         return False
 
+    # Check for low ink
+    check_if_low_ink = CheckIfLowInk(window_rect=window_rect)
+    low_ink = not check_if_low_ink.run()
+
     # Scan the tray
-    scan_msg = f"{prefix}Scanning the tray"
-    print(scan_msg)
-    logger.info(scan_msg)
-    publish_status_message(scan_msg, "info")
-    scan_tray = ScanTray(
-        window_rect=window_rect, is_retina=config.retina, image_path=config.image_path
-    )
-    if not scan_tray.run(canvas_index=canvas_index):
-        error_msg = f"{prefix}Failed to scan tray"
-        print(error_msg)
-        logger.error(error_msg)
-        publish_status_message(error_msg, "error")
-        return False
+    if should_scan_tray:
+        scan_msg = f"{prefix}Scanning the tray"
+        print(scan_msg)
+        logger.info(scan_msg)
+        publish_status_message(scan_msg, "info")
+        scan_tray = ScanTray(
+            window_rect=window_rect,
+            is_retina=config.retina,
+            image_path=config.image_path,
+        )
+        if not scan_tray.run(canvas_index=canvas_index):
+            error_msg = f"{prefix}Failed to scan tray"
+            print(error_msg)
+            logger.error(error_msg)
+            publish_status_message(error_msg, "error")
+            return False
+    else:
+        select_zeropoint = SelectZeroPointAlignment(
+            window_rect=window_rect, image_path=config.image_path
+        )
+        if not select_zeropoint.run(canvas_index=canvas_index):
+            error_msg = f"{prefix}Failed to select zero point alignment"
+            print(error_msg)
+            logger.error(error_msg)
+            publish_status_message(error_msg, "error")
+            return False
 
     # Check for stop signal
     if stop_print_event.is_set():
@@ -261,7 +291,7 @@ def start_print(canvas_index=0):
     return True
 
 
-def start_print_async(canvas_index, print_type):
+def start_print_async(canvas_index, print_type, publish_control_message=None):
     """Run the print workflow asynchronously"""
     global current_print_thread, stop_print_event
 
@@ -293,7 +323,9 @@ def start_print_async(canvas_index, print_type):
             )
             return False
 
-        success = start_print(canvas_index=canvas_index)
+        success = start_print(
+            canvas_index=canvas_index, publish_control_message=publish_control_message
+        )
 
         # Check for stop signal after print attempt
         if stop_print_event.is_set():
@@ -412,7 +444,10 @@ def handle_start_print_command(print_type, canvas_index):
 
     # Start the print job in a separate thread
     thread = threading.Thread(
-        target=start_print_async, args=(canvas_index, print_type), daemon=True
+        target=start_print_async,
+        args=(canvas_index, print_type),
+        kwargs={"publish_control_message": publish_control_message},
+        daemon=True,
     )
     thread.start()
 
