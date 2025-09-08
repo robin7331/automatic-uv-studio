@@ -37,6 +37,8 @@ stop_print_event = threading.Event()
 mqtt_client = None
 low_ink = False
 mqtt_loop = None
+mqtt_connected = False
+mqtt_reconnect_delay = 5  # seconds
 
 
 class Config:
@@ -363,9 +365,9 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
 
 def publish_status_message(message, level="info"):
     """Publish a status message to MQTT"""
-    global mqtt_loop
+    global mqtt_loop, mqtt_connected
 
-    if mqtt_loop and not mqtt_loop.is_closed():
+    if mqtt_loop and not mqtt_loop.is_closed() and mqtt_connected:
         status_message = {
             "timestamp": time.time(),
             "level": level,
@@ -387,7 +389,7 @@ def publish_status_message(message, level="info"):
 
 async def _publish_status_async(status_message):
     """Async helper to publish status message"""
-    global mqtt_client
+    global mqtt_client, mqtt_connected
 
     if mqtt_client:
         try:
@@ -397,13 +399,16 @@ async def _publish_status_async(status_message):
             logger.debug(f"Published status: {status_message['message']}")
         except Exception as e:
             logger.error(f"Failed to publish MQTT status message: {str(e)}")
+            mqtt_connected = False
+            # Trigger reconnection
+            asyncio.create_task(mqtt_reconnect())
 
 
 def publish_control_message(action):
     """Publish a control message to MQTT"""
-    global mqtt_loop
+    global mqtt_loop, mqtt_connected
 
-    if mqtt_loop and not mqtt_loop.is_closed():
+    if mqtt_loop and not mqtt_loop.is_closed() and mqtt_connected:
         control_message = {"action": action, "timestamp": time.time()}
 
         # Schedule the async publish on the event loop
@@ -419,7 +424,7 @@ def publish_control_message(action):
 
 async def _publish_control_async(control_message):
     """Async helper to publish control message"""
-    global mqtt_client
+    global mqtt_client, mqtt_connected
 
     if mqtt_client:
         try:
@@ -429,6 +434,9 @@ async def _publish_control_async(control_message):
             logger.info(f"Published control message: {control_message['action']}")
         except Exception as e:
             logger.error(f"Failed to publish control message: {str(e)}")
+            mqtt_connected = False
+            # Trigger reconnection
+            asyncio.create_task(mqtt_reconnect())
 
 
 def handle_start_print_command(print_type, canvas_index):
@@ -514,27 +522,95 @@ async def handle_mqtt_message(topic, payload):
         publish_status_message(f"Error processing message: {str(e)}", "error")
 
 
+async def mqtt_reconnect():
+    """Handle MQTT reconnection"""
+    global mqtt_client, mqtt_connected
+
+    if mqtt_connected:
+        return  # Already connected
+
+    logger.info("Attempting to reconnect to MQTT broker...")
+
+    max_retries = 5
+    retry_count = 0
+
+    while retry_count < max_retries and not mqtt_connected:
+        try:
+            await asyncio.sleep(mqtt_reconnect_delay)
+
+            # Close existing client if any
+            if mqtt_client:
+                try:
+                    await mqtt_client.disconnect()
+                except:
+                    pass
+
+            # Create new client and connect
+            mqtt_client = MQTTClient()
+            broker_url = f"mqtt://{config.mqtt_broker}:{config.mqtt_port}"
+            await mqtt_client.connect(broker_url)
+
+            # Resubscribe to topics
+            await mqtt_client.subscribe([(config.topic_command, QOS_1)])
+
+            mqtt_connected = True
+            logger.info("Successfully reconnected to MQTT broker")
+
+            # Send reconnection status
+            await _publish_status_async(
+                {
+                    "timestamp": time.time(),
+                    "level": "info",
+                    "message": "UV Studio reconnected to MQTT broker",
+                    "print_job_running": current_print_thread
+                    and current_print_thread.is_alive(),
+                }
+            )
+
+            # Restart message handler
+            asyncio.create_task(mqtt_message_handler())
+            break
+
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Reconnection attempt {retry_count} failed: {str(e)}")
+            if retry_count >= max_retries:
+                logger.error("Max reconnection attempts reached, giving up")
+                break
+
+
 async def mqtt_message_handler():
-    """Async message handler for aMQTT"""
-    global mqtt_client
+    """Async message handler for aMQTT with reconnection logic"""
+    global mqtt_client, mqtt_connected
 
     try:
-        while True:
-            message = await mqtt_client.deliver_message()
-            packet = message.publish_packet
-            topic = packet.variable_header.topic_name
-            payload = packet.payload.data
+        while mqtt_connected:
+            try:
+                message = await mqtt_client.deliver_message()
+                packet = message.publish_packet
+                topic = packet.variable_header.topic_name
+                payload = packet.payload.data
 
-            # Handle message in background to avoid blocking
-            asyncio.create_task(handle_mqtt_message(topic, payload))
+                # Handle message in background to avoid blocking
+                asyncio.create_task(handle_mqtt_message(topic, payload))
+
+            except Exception as e:
+                logger.error(f"Error receiving MQTT message: {str(e)}")
+                mqtt_connected = False
+                # Trigger reconnection
+                asyncio.create_task(mqtt_reconnect())
+                break
 
     except Exception as e:
         logger.error(f"Error in MQTT message handler: {str(e)}")
+        mqtt_connected = False
+        # Trigger reconnection
+        asyncio.create_task(mqtt_reconnect())
 
 
 async def setup_mqtt_async():
     """Setup aMQTT client and connect to broker"""
-    global mqtt_client
+    global mqtt_client, mqtt_connected
 
     try:
         mqtt_client = MQTTClient()
@@ -543,6 +619,7 @@ async def setup_mqtt_async():
         logger.info(f"Connecting to MQTT broker at {broker_url}")
 
         await mqtt_client.connect(broker_url)
+        mqtt_connected = True
         logger.info("Connected to MQTT broker")
 
         # Subscribe to command topic
@@ -566,6 +643,9 @@ async def setup_mqtt_async():
 
     except Exception as e:
         logger.error(f"Failed to connect to MQTT broker: {str(e)}")
+        mqtt_connected = False
+        # Schedule reconnection attempt
+        asyncio.create_task(mqtt_reconnect())
         return False
 
 
@@ -580,6 +660,8 @@ def setup_mqtt():
         asyncio.set_event_loop(mqtt_loop)
         try:
             mqtt_loop.run_until_complete(setup_mqtt_async())
+            # Start periodic connection check
+            mqtt_loop.create_task(mqtt_keepalive())
             mqtt_loop.run_forever()
         except Exception as e:
             logger.error(f"MQTT loop error: {str(e)}")
@@ -594,6 +676,22 @@ def setup_mqtt():
     time.sleep(2)
 
     return True
+
+
+async def mqtt_keepalive():
+    """Periodic connection check and reconnection if needed"""
+    global mqtt_connected
+
+    while True:
+        try:
+            await asyncio.sleep(5)  # Check every 30 seconds
+
+            if not mqtt_connected:
+                logger.warning("MQTT connection lost, attempting reconnection...")
+                asyncio.create_task(mqtt_reconnect())
+
+        except Exception as e:
+            logger.error(f"Error in MQTT keepalive: {str(e)}")
 
 
 def parse_arguments():
