@@ -14,7 +14,7 @@ class Stop(Workflow):
         self.click_machine()
 
         # find the stop button
-        center = pyautogui.locateCenterOnScreen("images/stop.png", confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(self.get_image_path("stop.png"), confidence=0.9)
         if not center:
             return False
 
@@ -23,7 +23,7 @@ class Stop(Workflow):
         pyautogui.sleep(2)
 
         # Find the confirm button
-        center = pyautogui.locateCenterOnScreen("images/confirm.png", confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(self.get_image_path("confirm.png"), confidence=0.9)
         if not center:
             return False
 

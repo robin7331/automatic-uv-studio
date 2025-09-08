@@ -41,7 +41,7 @@ class CheckIfShouldMoisturize(Workflow):
                 return False
 
         # Confirm the completion dialog
-        confirm = pyautogui.locateCenterOnScreen("images/ok.png", confidence=0.9)
+        confirm = pyautogui.locateCenterOnScreen(self.get_image_path("ok.png"), confidence=0.9)
         if confirm:
             pyautogui.click(self.transform_point_to_non_retina(confirm))
         else:

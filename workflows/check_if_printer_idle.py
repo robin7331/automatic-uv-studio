@@ -14,7 +14,7 @@ class CheckIfIdle(Workflow):
         self.click_machine()
 
         # Check if the printer is idle
-        online = pyautogui.locateOnScreen("images/idle.png", confidence=0.9)
+        online = pyautogui.locateOnScreen(self.get_image_path("idle.png"), confidence=0.9)
         if not online:
             return False
 

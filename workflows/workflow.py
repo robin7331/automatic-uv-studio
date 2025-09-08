@@ -1,11 +1,17 @@
 import pyautogui
+import os
 
 
 class Workflow:
-    def __init__(self, name=None, window_rect=None, is_retina=True):
+    def __init__(self, name=None, window_rect=None, is_retina=True, image_path="images"):
         self.name = name
         self.is_retina = is_retina
         self.window_rect = window_rect
+        self.image_path = image_path
+
+    def get_image_path(self, image_name):
+        """Get the full path to an image based on retina setting"""
+        return os.path.join(self.image_path, image_name)
 
     def transform_point_to_non_retina(self, point):
         if self.is_retina:

@@ -15,7 +15,7 @@ class SelectZeroPointAlignment(Workflow):
         y_offset = 409
 
         # If snapshot is selected the offset is larger
-        center = pyautogui.locateCenterOnScreen("images/snapshot.png", confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(self.get_image_path("snapshot.png"), confidence=0.9)
         if center:
             y_offset = 453
 

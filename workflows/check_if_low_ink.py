@@ -14,7 +14,7 @@ class CheckIfLowInk(Workflow):
         self.click_machine()
 
         # Check if the printer is idle
-        low_ink = pyautogui.locateOnScreen("images/low-ink.png", confidence=0.9)
+        low_ink = pyautogui.locateOnScreen(self.get_image_path("low-ink.png"), confidence=0.9)
         if low_ink:
             return False
 

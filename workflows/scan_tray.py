@@ -15,7 +15,7 @@ class ScanTray(Workflow):
         # select the scan tray option
         self.click_at(36, 360, relative_to_right_window_side=True)
 
-        center = pyautogui.locateCenterOnScreen("images/snapshot.png", confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(self.get_image_path("snapshot.png"), confidence=0.9)
         if not center:
             return False
 
@@ -31,7 +31,7 @@ class ScanTray(Workflow):
         checks = 0
         while True:
             pyautogui.sleep(1)
-            online = pyautogui.locateOnScreen("images/idle.png", confidence=0.9)
+            online = pyautogui.locateOnScreen(self.get_image_path("idle.png"), confidence=0.9)
             if online:
                 break
             checks += 1

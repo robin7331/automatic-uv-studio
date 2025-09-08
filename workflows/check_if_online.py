@@ -12,7 +12,7 @@ class CheckIfOnline(Workflow):
 
         self.click_canvas_index(index=tab_index)
 
-        online = pyautogui.locateOnScreen("images/online.png", confidence=0.9)
+        online = pyautogui.locateOnScreen(self.get_image_path("online.png"), confidence=0.9)
         if not online:
             return False
 

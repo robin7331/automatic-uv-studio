@@ -28,6 +28,7 @@ DEFAULT_MQTT_BROKER = "localhost"
 DEFAULT_MQTT_PORT = 1883
 DEFAULT_TOPIC_PREFIX = "uv_studio"
 DEFAULT_WINDOW_TITLE = "eufy"
+DEFAULT_RETINA = True
 
 # Global variables
 print_lock = threading.Lock()
@@ -47,6 +48,7 @@ class Config:
         broker_port=DEFAULT_MQTT_PORT,
         topic_prefix=DEFAULT_TOPIC_PREFIX,
         window_title=DEFAULT_WINDOW_TITLE,
+        retina=DEFAULT_RETINA,
     ):
         self.mqtt_broker = broker_host
         self.mqtt_port = broker_port
@@ -55,6 +57,8 @@ class Config:
         self.topic_status = f"{topic_prefix}/status"
         self.topic_control = f"{topic_prefix}/control"
         self.window_title = window_title
+        self.retina = retina
+        self.image_path = "images" if retina else "images/non-retina"
 
 
 # Global config instance
@@ -116,7 +120,7 @@ def stop_print():
         return False
 
     # reset the screen
-    stop = Stop(window_rect=window_rect)
+    stop = Stop(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
     if not stop.run():
         error_msg = f"Could not stop"
         print(error_msg)
@@ -157,7 +161,7 @@ def start_print(canvas_index=0):
         return False
 
     # reset the screen
-    reset_ui = ResetUIWorkflow(window_rect=window_rect)
+    reset_ui = ResetUIWorkflow(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
     if not reset_ui.run():
         error_msg = f"{prefix}Could not reset the UI"
         print(error_msg)
@@ -171,7 +175,7 @@ def start_print(canvas_index=0):
         return False
 
     # check if printer online
-    check_if_online = CheckIfOnline(window_rect=window_rect)
+    check_if_online = CheckIfOnline(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
     if not check_if_online.run():
         error_msg = f"{prefix}Printer not online"
         print(error_msg)
@@ -185,7 +189,7 @@ def start_print(canvas_index=0):
         return False
 
     # Make sure the printer is idle
-    check_if_idle = CheckIfIdle(window_rect=window_rect)
+    check_if_idle = CheckIfIdle(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
     if not check_if_idle.run():
         error_msg = f"{prefix}Printer not idle"
         print(error_msg)
@@ -203,7 +207,7 @@ def start_print(canvas_index=0):
     print(scan_msg)
     logger.info(scan_msg)
     publish_status_message(scan_msg, "info")
-    scan_tray = ScanTray(window_rect=window_rect)
+    scan_tray = ScanTray(window_rect=window_rect, is_retina=config.retina, image_path=config.image_path)
     if not scan_tray.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to scan tray"
         print(error_msg)
@@ -222,8 +226,11 @@ def start_print(canvas_index=0):
     print(start_msg)
     logger.info(start_msg)
     publish_status_message(start_msg, "info")
-    start_print_workflow = StartPrint(
-        window_rect=window_rect, publish_control_message=publish_control_message
+        start_print_workflow = StartPrint(
+        window_rect=window_rect, 
+        publish_control_message=publish_control_message,
+        is_retina=config.retina,
+        image_path=config.image_path
     )
     if not start_print_workflow.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to print"
@@ -573,6 +580,20 @@ def parse_arguments():
         help=f"Substring of the target app window title (default: {DEFAULT_WINDOW_TITLE})",
     )
 
+    parser.add_argument(
+        "--retina",
+        action="store_true",
+        default=DEFAULT_RETINA,
+        help="Use retina mode (default: True)",
+    )
+
+    parser.add_argument(
+        "--no-retina",
+        action="store_false",
+        dest="retina",
+        help="Use non-retina mode",
+    )
+
     return parser.parse_args()
 
 
@@ -589,11 +610,12 @@ def main():
         broker_port=args.broker_port,
         topic_prefix=args.topic_prefix,
         window_title=args.window_title,
+        retina=args.retina,
     )
 
     logger.info("Starting automatic-uv-studio MQTT client...")
     logger.info(
-        f"Configuration: broker={config.mqtt_broker}:{config.mqtt_port}, prefix={config.topic_prefix}, window_title~='{config.window_title}'"
+        f"Configuration: broker={config.mqtt_broker}:{config.mqtt_port}, prefix={config.topic_prefix}, window_title~='{config.window_title}', retina={config.retina}, images={config.image_path}"
     )
 
     # Setup MQTT connection
