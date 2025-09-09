@@ -4,12 +4,18 @@ import os
 
 class Workflow:
     def __init__(
-        self, name=None, window_rect=None, is_retina=True, image_path="images"
+        self,
+        name=None,
+        window_rect=None,
+        is_retina=True,
+        image_path="images",
+        logger=None,
     ):
         self.name = name
         self.is_retina = is_retina
         self.window_rect = window_rect
         self.image_path = image_path
+        self.logger = logger
 
     def get_image_path(self, image_name):
         """Get the full path to an image based on retina setting"""

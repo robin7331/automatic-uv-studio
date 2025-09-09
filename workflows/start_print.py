@@ -28,6 +28,7 @@ class StartPrint(Workflow):
         checks = 0
         while True:
             pyautogui.sleep(1)
+            self.logger.info("Waiting for printer to be ready...")
             ready = pyautogui.locateOnScreen(
                 self.get_image_path("ready_to_start.png"), confidence=0.9
             )
@@ -49,6 +50,7 @@ class StartPrint(Workflow):
         checks = 0
         while True:
             pyautogui.sleep(1)
+            self.logger.info("Waiting for printer to start printing..")
             online = pyautogui.locateOnScreen(
                 self.get_image_path("printing.png"), confidence=0.9
             )
@@ -64,6 +66,7 @@ class StartPrint(Workflow):
         checks = 0
         while True:
             pyautogui.sleep(1)
+            self.logger.info("Waiting for printer to be finished...")
             complete = pyautogui.locateOnScreen(
                 self.get_image_path("print_complete.png"), confidence=0.9
             )
