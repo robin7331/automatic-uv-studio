@@ -55,7 +55,7 @@ class StartPrint(Workflow):
             if online:
                 break
             checks += 1
-            if checks > 10:
+            if checks > 300:
                 return False
 
         pyautogui.sleep(4)
