@@ -273,6 +273,7 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         publish_control_message=publish_control_message,
         is_retina=config.retina,
         image_path=config.image_path,
+        logger=logger,
     )
     if not start_print_workflow.run(canvas_index=canvas_index):
         error_msg = f"{prefix}Failed to print"
