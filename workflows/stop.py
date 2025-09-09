@@ -33,7 +33,22 @@ class Stop(Workflow):
 
         pyautogui.click(self.transform_point_to_non_retina(center))
 
-        pyautogui.sleep(10)
+        pyautogui.sleep(2)
+
+        # wait until it is finished with printing
+        checks = 0
+        while True:
+            pyautogui.sleep(1)
+            if not pyautogui.locateOnScreen(
+                self.get_image_path("printing.png"), confidence=0.9
+            ):
+                break
+
+            checks += 1
+            if checks > 10:
+                return False
+
+        pyautogui.sleep(2)
 
         # When stopping mid print (not just mid scanning) there will be a final dialog.
         center = pyautogui.locateCenterOnScreen(
