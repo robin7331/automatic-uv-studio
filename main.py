@@ -550,6 +550,20 @@ async def mqtt_reconnect():
             broker_url = f"mqtt://{config.mqtt_broker}:{config.mqtt_port}"
             await mqtt_client.connect(broker_url)
 
+            # Wait a moment for session to be properly initialized
+            await asyncio.sleep(0.5)
+
+            # Verify session is properly connected (aMQTT uses transitions state machine)
+            if not mqtt_client.session:
+                raise Exception("Session not initialized after reconnect")
+
+            # Check if session is in connected state using transitions
+            if (
+                hasattr(mqtt_client.session, "is_connected")
+                and not mqtt_client.session.is_connected()
+            ):
+                raise Exception("Session not in connected state after reconnect")
+
             # Resubscribe to topics
             await mqtt_client.subscribe([(config.topic_command, QOS_1)])
 
@@ -586,6 +600,31 @@ async def mqtt_message_handler():
     try:
         while mqtt_connected:
             try:
+                # Check if client and session are properly initialized
+                if (
+                    not mqtt_client
+                    or not hasattr(mqtt_client, "session")
+                    or not mqtt_client.session
+                ):
+                    logger.warning(
+                        "MQTT client session not initialized, stopping message handler"
+                    )
+                    mqtt_connected = False
+                    asyncio.create_task(mqtt_reconnect())
+                    break
+
+                # Check if session is in connected state using transitions
+                if (
+                    hasattr(mqtt_client.session, "is_connected")
+                    and not mqtt_client.session.is_connected()
+                ):
+                    logger.warning(
+                        "MQTT session not connected, stopping message handler"
+                    )
+                    mqtt_connected = False
+                    asyncio.create_task(mqtt_reconnect())
+                    break
+
                 message = await mqtt_client.deliver_message()
 
                 # Check if message is None (can happen on disconnection/timeout)
@@ -641,6 +680,21 @@ async def setup_mqtt_async():
         logger.info(f"Connecting to MQTT broker at {broker_url}")
 
         await mqtt_client.connect(broker_url)
+
+        # Wait a moment for session to be properly initialized
+        await asyncio.sleep(0.5)
+
+        # Verify session is properly connected (aMQTT uses transitions state machine)
+        if not mqtt_client.session:
+            raise Exception("Session not initialized after connect")
+
+        # Check if session is in connected state using transitions
+        if (
+            hasattr(mqtt_client.session, "is_connected")
+            and not mqtt_client.session.is_connected()
+        ):
+            raise Exception("Session not in connected state")
+
         mqtt_connected = True
         logger.info("Connected to MQTT broker")
 
