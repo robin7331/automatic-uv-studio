@@ -33,7 +33,7 @@ DEFAULT_RETINA = True
 # Global variables
 print_lock = threading.Lock()
 current_print_thread = None
-current_print_type = False  # False, '12mm', or '16mm'
+current_print_type = False  # False, '12mm', '16mm', or 'error'
 stop_print_event = threading.Event()
 mqtt_client = None
 low_ink = False
@@ -323,20 +323,22 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
             success_msg = f"Completed {print_type} print successfully"
             logger.info(success_msg)
             print(success_msg)
+            current_print_type = False  # Reset to idle on success
         else:
             error_msg = f"Failed to complete {print_type} print"
             logger.error(error_msg)
             print(error_msg)
+            current_print_type = "error"  # Set error state
 
         return success
     except Exception as e:
         error_msg = f"Error during {print_type} print: {str(e)}"
         logger.error(error_msg)
         print(error_msg)
+        current_print_type = "error"  # Set error state on exception
         return False
     finally:
         current_print_thread = None
-        current_print_type = False  # Reset print type
         print_lock.release()
         finish_msg = f"{print_type} print thread finished"
         logger.info(finish_msg)
@@ -440,7 +442,7 @@ def handle_status_command():
 
 def handle_stop_command():
     """Handle stop command from MQTT"""
-    global stop_print_event
+    global stop_print_event, current_print_type
 
     if current_print_thread and current_print_thread.is_alive():
         # Signal the print thread to stop
@@ -451,7 +453,23 @@ def handle_stop_command():
 
         logger.info("Print job stop signal sent")
     else:
-        logger.warning("No print job is currently running")
+        # If no print is running but we're in error state, clear the error
+        if current_print_type == "error":
+            current_print_type = False
+            logger.info("Cleared error state")
+        else:
+            logger.warning("No print job is currently running")
+
+
+def handle_clear_error_command():
+    """Handle clear error command from MQTT"""
+    global current_print_type
+
+    if current_print_type == "error":
+        current_print_type = False
+        logger.info("Error state cleared via command")
+    else:
+        logger.info(f"Current state is '{current_print_type}', no error to clear")
 
 
 # MQTT async functions for aMQTT
@@ -474,6 +492,8 @@ async def handle_mqtt_message(topic, payload):
                 handle_status_command()
             elif command == "stop":
                 handle_stop_command()
+            elif command == "clear_error":
+                handle_clear_error_command()
             else:
                 logger.warning(f"Unknown command: {command}")
 
