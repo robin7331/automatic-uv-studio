@@ -33,6 +33,7 @@ DEFAULT_RETINA = True
 # Global variables
 print_lock = threading.Lock()
 current_print_thread = None
+current_print_type = False  # False, '12mm', or '16mm'
 stop_print_event = threading.Event()
 mqtt_client = None
 low_ink = False
@@ -112,13 +113,11 @@ def stop_print():
     prepare_msg = f"Stopping"
     print(prepare_msg)
     logger.info(prepare_msg)
-    publish_status_message(prepare_msg, "info")
 
     if not window_rect:
         error_msg = f"Could not prepare window"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # reset the screen
@@ -129,7 +128,6 @@ def stop_print():
         error_msg = f"Could not stop"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
 
@@ -143,7 +141,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"Could not prepare window"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     prefix = "[12mm] " if canvas_index == 0 else "[16mm] "
@@ -151,7 +148,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
     prepare_msg = f"{prefix}Preparing eufy Make Studio"
     print(prepare_msg)
     logger.info(prepare_msg)
-    publish_status_message(prepare_msg, "info")
 
     # Check for stop signal
     if stop_print_event.is_set():
@@ -162,7 +158,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Could not prepare window"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # reset the screen
@@ -173,7 +168,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Could not reset the UI"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # Check for stop signal
@@ -189,7 +183,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Printer not online"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
         # Check for stop signal
@@ -201,7 +194,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Printer not moisturized"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # Check for stop signal
@@ -217,7 +209,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Printer not idle"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # Check for stop signal
@@ -234,7 +225,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         scan_msg = f"{prefix}Scanning the tray"
         print(scan_msg)
         logger.info(scan_msg)
-        publish_status_message(scan_msg, "info")
         scan_tray = ScanTray(
             window_rect=window_rect,
             is_retina=config.retina,
@@ -244,7 +234,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
             error_msg = f"{prefix}Failed to scan tray"
             print(error_msg)
             logger.error(error_msg)
-            publish_status_message(error_msg, "error")
             return False
     else:
         select_zeropoint = SelectZeroPointAlignment(
@@ -254,7 +243,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
             error_msg = f"{prefix}Failed to select zero point alignment"
             print(error_msg)
             logger.error(error_msg)
-            publish_status_message(error_msg, "error")
             return False
 
     # Check for stop signal
@@ -267,7 +255,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
     start_msg = f"{prefix}Starting {loggableName} print"
     print(start_msg)
     logger.info(start_msg)
-    publish_status_message(start_msg, "info")
     start_print_workflow = StartPrint(
         window_rect=window_rect,
         publish_control_message=publish_control_message,
@@ -279,7 +266,6 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
         error_msg = f"{prefix}Failed to print"
         print(error_msg)
         logger.error(error_msg)
-        publish_status_message(error_msg, "error")
         return False
 
     # Check for stop signal
@@ -290,13 +276,12 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
     success_msg = f"{prefix}Print completed successfully"
     print(success_msg)
     logger.info(success_msg)
-    publish_status_message(success_msg, "info")
     return True
 
 
 def start_print_async(canvas_index, print_type, publish_control_message=None):
     """Run the print workflow asynchronously"""
-    global current_print_thread, stop_print_event
+    global current_print_thread, stop_print_event, current_print_type
 
     # Check if we can acquire the lock (non-blocking)
     if not print_lock.acquire(blocking=False):
@@ -305,25 +290,23 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
         )
         logger.warning(error_msg)
         print(error_msg)
-        publish_status_message(error_msg, "warning")
         return False
 
     try:
         # Clear any previous stop signal
         stop_print_event.clear()
 
+        # Set current print type for ping system
+        current_print_type = print_type
+
         current_print_thread = threading.current_thread()
         start_msg = f"Starting {print_type} print (canvas_index={canvas_index})"
         logger.info(start_msg)
         print(start_msg)
-        publish_status_message(start_msg, "info")
 
         # Check for stop signal before starting
         if stop_print_event.is_set():
             logger.info(f"{print_type} print was stopped before starting")
-            publish_status_message(
-                f"{print_type} print was stopped before starting", "info"
-            )
             return False
 
         success = start_print(
@@ -333,7 +316,6 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
         # Check for stop signal after print attempt
         if stop_print_event.is_set():
             logger.info(f"{print_type} print was stopped")
-            publish_status_message(f"{print_type} print was stopped", "info")
             stop_print()  # Call the stop_print function to handle cleanup
             return False
 
@@ -341,68 +323,54 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
             success_msg = f"Completed {print_type} print successfully"
             logger.info(success_msg)
             print(success_msg)
-            publish_status_message(success_msg, "info")
         else:
             error_msg = f"Failed to complete {print_type} print"
             logger.error(error_msg)
             print(error_msg)
-            publish_status_message(error_msg, "error")
 
         return success
     except Exception as e:
         error_msg = f"Error during {print_type} print: {str(e)}"
         logger.error(error_msg)
         print(error_msg)
-        publish_status_message(error_msg, "error")
         return False
     finally:
         current_print_thread = None
+        current_print_type = False  # Reset print type
         print_lock.release()
         finish_msg = f"{print_type} print thread finished"
         logger.info(finish_msg)
         print(finish_msg)
-        publish_status_message(finish_msg, "info")
 
 
-def publish_status_message(message, level="info"):
-    """Publish a status message to MQTT"""
-    global mqtt_loop, mqtt_connected
+async def publish_ping():
+    """Publish regular ping with current print status"""
+    global mqtt_client, mqtt_connected, current_print_type
 
-    if mqtt_loop and not mqtt_loop.is_closed() and mqtt_connected:
-        status_message = {
-            "timestamp": time.time(),
-            "level": level,
-            "message": message,
-            "print_job_running": current_print_thread
-            and current_print_thread.is_alive(),
-        }
+    if mqtt_client and mqtt_connected:
+        ping_message = {"print_running": current_print_type}
 
-        # Schedule the async publish on the event loop
-        try:
-            asyncio.run_coroutine_threadsafe(
-                _publish_status_async(status_message), mqtt_loop
-            )
-        except Exception as e:
-            logger.error(f"Failed to schedule status message: {str(e)}")
-    else:
-        logger.warning("MQTT client not connected, cannot publish status message")
-
-
-async def _publish_status_async(status_message):
-    """Async helper to publish status message"""
-    global mqtt_client, mqtt_connected
-
-    if mqtt_client:
         try:
             await mqtt_client.publish(
-                config.topic_status, json.dumps(status_message).encode(), qos=QOS_1
+                config.topic_status, json.dumps(ping_message).encode(), qos=QOS_1
             )
-            logger.debug(f"Published status: {status_message['message']}")
         except Exception as e:
-            logger.error(f"Failed to publish MQTT status message: {str(e)}")
+            logger.error(f"Failed to publish ping: {str(e)}")
             mqtt_connected = False
             # Trigger reconnection
             asyncio.create_task(mqtt_reconnect())
+
+
+async def ping_loop():
+    """Send ping every second"""
+    while True:
+        try:
+            await asyncio.sleep(1)
+            if mqtt_connected:
+                await publish_ping()
+        except Exception as e:
+            logger.error(f"Error in ping loop: {str(e)}")
+            await asyncio.sleep(1)
 
 
 def publish_control_message(action):
@@ -448,7 +416,6 @@ def handle_start_print_command(print_type, canvas_index):
             f"Cannot start {print_type} print - another print job is already running"
         )
         logger.warning(error_msg)
-        publish_status_message(error_msg, "warning")
         return
 
     # Start the print job in a separate thread
@@ -462,7 +429,6 @@ def handle_start_print_command(print_type, canvas_index):
 
     success_msg = f"{print_type} print job started"
     logger.info(success_msg)
-    publish_status_message(success_msg, "info")
 
 
 def handle_status_command():
@@ -470,7 +436,6 @@ def handle_status_command():
     is_running = current_print_thread and current_print_thread.is_alive()
     status_msg = f"Print job running: {is_running}"
     logger.info(status_msg)
-    publish_status_message(status_msg, "info")
 
 
 def handle_stop_command():
@@ -485,10 +450,8 @@ def handle_stop_command():
         stop_print()
 
         logger.info("Print job stop signal sent")
-        publish_status_message("Print job stop signal sent", "info")
     else:
         logger.warning("No print job is currently running")
-        publish_status_message("No print job is currently running", "warning")
 
 
 # MQTT async functions for aMQTT
@@ -513,14 +476,11 @@ async def handle_mqtt_message(topic, payload):
                 handle_stop_command()
             else:
                 logger.warning(f"Unknown command: {command}")
-                publish_status_message(f"Unknown command: {command}", "warning")
 
     except json.JSONDecodeError:
         logger.error("Failed to decode JSON message")
-        publish_status_message("Failed to decode JSON message", "error")
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
-        publish_status_message(f"Error processing message: {str(e)}", "error")
 
 
 async def mqtt_reconnect():
@@ -570,17 +530,6 @@ async def mqtt_reconnect():
 
             mqtt_connected = True
             logger.info("Successfully reconnected to MQTT broker")
-
-            # Send reconnection status
-            await _publish_status_async(
-                {
-                    "timestamp": time.time(),
-                    "level": "info",
-                    "message": "UV Studio reconnected to MQTT broker",
-                    "print_job_running": current_print_thread
-                    and current_print_thread.is_alive(),
-                }
-            )
 
             # Restart message handler
             asyncio.create_task(mqtt_message_handler())
@@ -703,18 +652,9 @@ async def setup_mqtt_async():
         await mqtt_client.subscribe([(config.topic_command, QOS_1)])
         logger.info(f"Subscribed to {config.topic_command}")
 
-        # Send initial status
-        await _publish_status_async(
-            {
-                "timestamp": time.time(),
-                "level": "info",
-                "message": "UV Studio connected to MQTT broker",
-                "print_job_running": False,
-            }
-        )
-
-        # Start message handler
+        # Start message handler and ping loop
         asyncio.create_task(mqtt_message_handler())
+        asyncio.create_task(ping_loop())
 
         return True
 
@@ -847,7 +787,6 @@ def main():
 
     # Give MQTT time to connect and send initial status
     time.sleep(3)
-    publish_status_message("UV Studio MQTT client started and ready", "info")
 
     try:
         # Keep the main thread alive
@@ -855,7 +794,6 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
-        publish_status_message("UV Studio MQTT client shutting down", "info")
 
         # Cleanup MQTT
         if mqtt_loop and not mqtt_loop.is_closed():
