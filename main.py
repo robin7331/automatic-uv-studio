@@ -33,7 +33,7 @@ DEFAULT_RETINA = True
 # Global variables
 print_lock = threading.Lock()
 current_print_thread = None
-current_print_type = False  # False, '12mm', '16mm', 'error_12mm', or 'error_16mm'
+current_print_type = False  # False, '12mm', '16mm', 'stopping_12mm', 'stopping_16mm', 'error_12mm', or 'error_16mm'
 stop_print_event = threading.Event()
 mqtt_client = None
 low_ink = False
@@ -131,9 +131,15 @@ def stop_print():
         return False
 
 
-def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=None):
+def start_print(
+    canvas_index=0,
+    should_scan_tray=False,
+    publish_control_message=None,
+    print_type=None,
+):
     global stop_print_event
     global low_ink
+    global current_print_type
 
     window_rect = prepare_window()
 
@@ -151,6 +157,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during preparation")
         return False
 
@@ -172,6 +180,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during UI reset")
         return False
 
@@ -187,6 +197,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
         # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         return False
 
     check_if_moisturized = CheckIfShouldMoisturize(window_rect=window_rect)
@@ -198,6 +210,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during online check")
         return False
 
@@ -213,6 +227,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during idle check")
         return False
 
@@ -247,6 +263,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during tray scan")
         return False
 
@@ -270,6 +288,8 @@ def start_print(canvas_index=0, should_scan_tray=False, publish_control_message=
 
     # Check for stop signal
     if stop_print_event.is_set():
+        if print_type:
+            current_print_type = f"stopping_{print_type}"
         logger.info(f"{prefix}Print stopped during print execution")
         return False
 
@@ -310,13 +330,17 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
             return False
 
         success = start_print(
-            canvas_index=canvas_index, publish_control_message=publish_control_message
+            canvas_index=canvas_index,
+            publish_control_message=publish_control_message,
+            print_type=print_type,
         )
 
         # Check for stop signal after print attempt
         if stop_print_event.is_set():
             logger.info(f"{print_type} print was stopped")
+            current_print_type = f"stopping_{print_type}"  # Set stopping state
             stop_print()  # Call the stop_print function to handle cleanup
+            current_print_type = False  # Reset to idle after stop is complete
             return False
 
         if success:
@@ -457,10 +481,13 @@ def handle_stop_command():
 
         logger.info("Print job stop signal sent")
     else:
-        # If no print is running but we're in error state, clear the error
-        if current_print_type and current_print_type.startswith("error_"):
+        # If no print is running but we're in error or stopping state, clear it
+        if current_print_type and (
+            current_print_type.startswith("error_")
+            or current_print_type.startswith("stopping_")
+        ):
             current_print_type = False
-            logger.info("Cleared error state")
+            logger.info("Cleared error/stopping state")
         else:
             logger.warning("No print job is currently running")
 
@@ -469,9 +496,12 @@ def handle_clear_error_command():
     """Handle clear error command from MQTT"""
     global current_print_type
 
-    if current_print_type and current_print_type.startswith("error_"):
+    if current_print_type and (
+        current_print_type.startswith("error_")
+        or current_print_type.startswith("stopping_")
+    ):
         current_print_type = False
-        logger.info("Error state cleared via command")
+        logger.info("Error/stopping state cleared via command")
     else:
         logger.info(f"Current state is '{current_print_type}', no error to clear")
 
