@@ -33,7 +33,7 @@ DEFAULT_RETINA = True
 # Global variables
 print_lock = threading.Lock()
 current_print_thread = None
-current_print_type = False  # False, '12mm', '16mm', or 'error'
+current_print_type = False  # False, '12mm', '16mm', 'error_12mm', or 'error_16mm'
 stop_print_event = threading.Event()
 mqtt_client = None
 low_ink = False
@@ -328,14 +328,18 @@ def start_print_async(canvas_index, print_type, publish_control_message=None):
             error_msg = f"Failed to complete {print_type} print"
             logger.error(error_msg)
             print(error_msg)
-            current_print_type = "error"  # Set error state
+            current_print_type = (
+                f"error_{print_type}"  # Set error state with print type
+            )
 
         return success
     except Exception as e:
         error_msg = f"Error during {print_type} print: {str(e)}"
         logger.error(error_msg)
         print(error_msg)
-        current_print_type = "error"  # Set error state on exception
+        current_print_type = (
+            f"error_{print_type}"  # Set error state with print type on exception
+        )
         return False
     finally:
         current_print_thread = None
@@ -454,7 +458,7 @@ def handle_stop_command():
         logger.info("Print job stop signal sent")
     else:
         # If no print is running but we're in error state, clear the error
-        if current_print_type == "error":
+        if current_print_type and current_print_type.startswith("error_"):
             current_print_type = False
             logger.info("Cleared error state")
         else:
@@ -465,7 +469,7 @@ def handle_clear_error_command():
     """Handle clear error command from MQTT"""
     global current_print_type
 
-    if current_print_type == "error":
+    if current_print_type and current_print_type.startswith("error_"):
         current_print_type = False
         logger.info("Error state cleared via command")
     else:
