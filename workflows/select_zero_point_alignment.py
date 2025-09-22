@@ -19,7 +19,10 @@ class SelectZeroPointAlignment(Workflow):
             self.get_image_path("snapshot.png"), confidence=0.9
         )
         if center:
+            print("Snapshot detected, adjusting offset")
             y_offset = 459
+        else:
+            print("No snapshot detected, using default offset")
 
         # select the zero point alignment option
         self.click_at(36, y_offset, relative_to_right_window_side=True)
