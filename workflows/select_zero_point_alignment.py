@@ -15,9 +15,14 @@ class SelectZeroPointAlignment(Workflow):
         y_offset = 409
 
         # If snapshot is selected the offset is larger
-        center = pyautogui.locateCenterOnScreen(self.get_image_path("snapshot.png"), confidence=0.9)
+        center = pyautogui.locateCenterOnScreen(
+            self.get_image_path("snapshot.png"), confidence=0.9
+        )
         if center:
+            print("Snapshot mode detected")
             y_offset = 453
+        else:
+            print("Snapshot mode not detected")
 
         # select the zero point alignment option
         self.click_at(36, y_offset, relative_to_right_window_side=True)

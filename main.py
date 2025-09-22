@@ -253,7 +253,9 @@ def start_print(
             return False
     else:
         select_zeropoint = SelectZeroPointAlignment(
-            window_rect=window_rect, image_path=config.image_path
+            window_rect=window_rect,
+            image_path=config.image_path,
+            is_retina=config.retina,
         )
         if not select_zeropoint.run(canvas_index=canvas_index):
             error_msg = f"{prefix}Failed to select zero point alignment"
