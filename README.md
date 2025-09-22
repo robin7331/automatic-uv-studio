@@ -1,13 +1,13 @@
 # Automatic UV Studio
 
-An automated 3D printer control system that interfaces with eufy Make Studio via MQTT.
+An automated software that interfaces with eufy Make Studio.
 
 ## Features
 
 - **MQTT Interface**: Control print jobs via MQTT messages
-- **Thread Safety**: Only one print job can run at a time
-- **Real-time Status**: All workflow steps are published to MQTT
+- **Real-time Status**: Simple status ping every second for remote monitoring
 - **12mm & 16mm Print Support**: Support for different canvas sizes
+- **Retina/Non-Retina Image Support**: Automatic image scaling for UI detection
 
 ## MQTT Topics
 
@@ -18,22 +18,43 @@ Send JSON commands to control the printer:
 {"command": "start_12mm_print"}
 {"command": "start_16mm_print"}
 {"command": "status"}
+{"command": "stop"}
+{"command": "clear_error"}
 ```
 
 ### Status Topic: `uv_studio/status`
-Receive real-time status updates:
+Receive real-time status pings (every second):
 
 ```json
 {
-  "timestamp": 1692977400.123,
-  "level": "info",
-  "message": "[12mm] Starting 12mm print",
-  "print_job_running": true
+  "print_running": false
+}
+{
+  "print_running": "12mm"
+}
+{
+  "print_running": "16mm"
+}
+{
+  "print_running": "stopping_12mm"
+}
+{
+  "print_running": "stopping_16mm"
+}
+{
+  "print_running": "error_12mm"
+}
+{
+  "print_running": "error_16mm"
 }
 ```
+- `false`: Idle
+- `12mm` / `16mm`: Print job running
+- `stopping_12mm` / `stopping_16mm`: Stop signal received, stopping in progress
+- `error_12mm` / `error_16mm`: Print job failed
 
 ### Physical Start Button Topic: `uv_studio/control`
-A device should subscribe to thos topic and when receiving the message   
+A device should subscribe to this topic and when receiving the message   
 ```json
 {"action": "press_start_button"}
 ```
@@ -89,11 +110,13 @@ uv run main.py --broker-host mqtt.example.com --broker-port 8883
 - `--topic-prefix PREFIX` - MQTT topic prefix (default: uv_studio)
 - `--start-broker` - Start embedded MQTT broker before connecting
 - `--broker-only` - Only start the MQTT broker (don't start UV Studio client)
+- `--window-title TITLE` - Substring of the target app window title (default: eufy)
+- `--retina` / `--no-retina` - Use retina or non-retina image mode
 
 The client will:
 - Connect to MQTT broker at specified host and port
 - Subscribe to `{prefix}/command` for incoming commands
-- Publish status updates to `{prefix}/status`
+- Publish status pings to `{prefix}/status`
 
 ### Send Commands
 
@@ -118,7 +141,7 @@ mosquitto_pub -h localhost -t uv_studio/command -m '{"command": "start_12mm_prin
 mosquitto_pub -h 192.168.1.100 -p 1884 -t my_printer/command -m '{"command": "start_16mm_print"}'
 ```
 
-#### Monitor status messages:
+#### Monitor status pings:
 ```bash
 # Default settings
 mosquitto_sub -h localhost -t uv_studio/status
@@ -139,6 +162,10 @@ The system supports flexible configuration via command-line arguments:
 ### Embedded Broker
 - **Start Broker**: `--start-broker` - Start embedded MQTT broker
 - **Broker Only**: `--broker-only` - Only run the broker (no UV Studio client)
+
+### Image Mode
+- **Retina**: `--retina` (default: True)
+- **Non-Retina**: `--no-retina`
 
 ### Examples
 ```bash
@@ -165,11 +192,21 @@ The print workflow includes:
 
 Each step is logged to both console and MQTT status topic.
 
+## Status Ping System
+
+- Every second, a status ping is published to MQTT with the current print state:
+    - `false`: Idle
+    - `12mm` / `16mm`: Print job running
+    - `stopping_12mm` / `stopping_16mm`: Stop signal received, stopping in progress
+    - `error_12mm` / `error_16mm`: Print job failed
+- The state returns to `false` when idle or after stop/error is cleared.
+
 ## Error Handling
 
 - **Concurrent Jobs**: Only one print job can run at a time
 - **Connection Issues**: MQTT connection failures are logged
-- **Print Failures**: All workflow errors are reported via MQTT
+- **Print Failures**: All workflow errors are reported via status ping
+- **Stop Signal**: Stopping state is reported until stop is complete
 
 ## Thread Safety
 
