@@ -12,12 +12,12 @@ class SelectZeroPointAlignment(Workflow):
 
         self.click_canvas_index(index=canvas_index)
 
-        y_offset = 409
+        y_offset = 366
 
         # If snapshot is selected the offset is larger
         center = pyautogui.locateCenterOnScreen(self.get_image_path("snapshot.png"), confidence=0.9)
         if center:
-            y_offset = 453
+            y_offset = 459
 
         # select the zero point alignment option
         self.click_at(36, y_offset, relative_to_right_window_side=True)
