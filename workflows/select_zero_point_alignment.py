@@ -12,7 +12,7 @@ class SelectZeroPointAlignment(Workflow):
 
         self.click_canvas_index(index=canvas_index)
 
-        y_offset = 366
+        y_offset = 413
 
         # If snapshot is selected the offset is larger
         center = pyautogui.locateCenterOnScreen(
@@ -20,7 +20,7 @@ class SelectZeroPointAlignment(Workflow):
         )
         if center:
             print("Snapshot detected, adjusting offset")
-            y_offset = 459
+            y_offset = 458
         else:
             print("No snapshot detected, using default offset")
 
