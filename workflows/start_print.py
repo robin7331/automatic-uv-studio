@@ -4,9 +4,10 @@ import pywinctl as pwc
 
 
 class StartPrint(Workflow):
-    def __init__(self, *args, publish_control_message=None, **kwargs):
+    def __init__(self, *args, publish_control_message=None, use_software_start=True, **kwargs):
         super().__init__(*args, name="Start Print", **kwargs)
         self.publish_control_message = publish_control_message
+        self.use_software_start = use_software_start
 
     def run(self, canvas_index=0):
         super().run()
@@ -39,8 +40,19 @@ class StartPrint(Workflow):
                 return False
 
         pyautogui.sleep(2)
-        # Send MQTT message to press the physical start button
-        self.publish_control_message("press_start_button")
+
+        if (self.use_software_start):
+            center = pyautogui.locateCenterOnScreen(
+                self.get_image_path("start_print.png"), confidence=0.9
+            )
+            if not center:
+                return False
+
+            pyautogui.click(self.transform_point_to_non_retina(center))
+        else:
+            # Send MQTT message to press the physical start button
+            self.publish_control_message("press_start_button")
+            
         pyautogui.sleep(2)
 
         # Open the machine tab

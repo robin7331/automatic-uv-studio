@@ -278,6 +278,7 @@ def start_print(
     start_print_workflow = StartPrint(
         window_rect=window_rect,
         publish_control_message=publish_control_message,
+        use_software_start=True,
         is_retina=config.retina,
         image_path=config.image_path,
         logger=logger,
